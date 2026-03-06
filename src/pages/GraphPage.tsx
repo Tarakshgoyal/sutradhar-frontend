@@ -5,14 +5,16 @@ import { DataSet } from "vis-data"
 import {
     GraphToolbar,
     type GraphFilters,
+    type ViewMode,
 } from "@/components/graph/GraphToolbar"
+import { MapView } from "@/components/graph/MapView"
 import {
     GraphInfoPanel,
     type SelectedNode,
 } from "@/components/graph/GraphInfoPanel"
 import { GraphLegend } from "@/components/graph/GraphLegend"
 import { ReportsPanel } from "@/components/graph/ReportsPanel"
-import { fetchGraph, type GraphEdge } from "@/lib/api"
+import { fetchGraph, type GraphEdge, type GraphNode } from "@/lib/api"
 import { TYPE_COLORS } from "@/lib/constants"
 import { Loader2 } from "lucide-react"
 
@@ -37,8 +39,10 @@ export default function GraphPage() {
     const networkRef = useRef<Network | null>(null)
     const [loading, setLoading] = useState(true)
     const [chatOpen, setChatOpen] = useState(false)
+    const [viewMode, setViewMode] = useState<ViewMode>("graph")
     const [selectedNode, setSelectedNode] = useState<SelectedNode | null>(null)
     const [edges, setEdges] = useState<GraphEdge[]>([])
+    const [graphNodes, setGraphNodes] = useState<GraphNode[]>([])
     const [nodesMap, setNodesMap] = useState<
         Map<string | number, { fullLabel: string }>
     >(new Map())
@@ -115,8 +119,9 @@ export default function GraphPage() {
                 dashes: e.type === "INVOLVED_IN" ? [5, 5] : false,
             }))
 
-            // Store for info panel
+            // Store for info panel and map view
             setEdges(data.edges)
+            setGraphNodes(data.nodes)
             const map = new Map<string | number, { fullLabel: string }>()
             visNodes.forEach((n) => map.set(n.id, { fullLabel: n.fullLabel }))
             setNodesMap(map)
@@ -193,18 +198,37 @@ export default function GraphPage() {
                 onApply={loadGraph}
                 chatOpen={chatOpen}
                 onChatToggle={() => setChatOpen((v) => !v)}
+                viewMode={viewMode}
+                onViewModeChange={setViewMode}
             />
 
             <GraphInfoPanel
                 selectedNode={selectedNode}
                 edges={edges}
                 nodesMap={nodesMap}
+                onClose={() => setSelectedNode(null)}
             />
 
             <GraphLegend />
 
-            {/* Graph container */}
-            <div ref={containerRef} className="h-full w-full" />
+            {/* Graph container — always mounted so vis-network keeps its canvas */}
+            <div
+                ref={containerRef}
+                className="h-full w-full"
+                style={{ display: viewMode === "graph" ? "block" : "none" }}
+            />
+
+            {/* Map container */}
+            {viewMode === "map" && (
+                <div className="absolute inset-0 top-12 z-0">
+                    <MapView
+                        nodes={graphNodes}
+                        edges={edges}
+                        selectedNode={selectedNode}
+                        onSelectNode={setSelectedNode}
+                    />
+                </div>
+            )}
 
             {/* Chat side panel */}
             {chatOpen && <ChatPanel onClose={() => setChatOpen(false)} />}

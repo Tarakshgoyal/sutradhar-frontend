@@ -1,7 +1,6 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { ScrollArea } from "@/components/ui/scroll-area"
-import { ExternalLink, ArrowRight, ArrowLeft } from "lucide-react"
+import { ExternalLink, ArrowRight, ArrowLeft, X } from "lucide-react"
 import type { GraphEdge } from "@/lib/api"
 
 export interface SelectedNode {
@@ -23,28 +22,17 @@ interface GraphInfoPanelProps {
     selectedNode: SelectedNode | null
     edges: GraphEdge[]
     nodesMap: Map<string | number, { fullLabel: string }>
+    onClose?: () => void
 }
 
 export function GraphInfoPanel({
     selectedNode,
     edges,
     nodesMap,
+    onClose,
 }: GraphInfoPanelProps) {
     if (!selectedNode) {
-        return (
-            <Card className="fixed top-[70px] left-4 z-10 w-[420px] border-white/10 bg-black/95 backdrop-blur-xl">
-                <CardHeader className="pb-2">
-                    <CardTitle className="text-sm text-sky-400">
-                        Global Ontology Engine
-                    </CardTitle>
-                </CardHeader>
-                <CardContent>
-                    <p className="text-xs text-muted-foreground">
-                        Click any entity to see relationships and source articles
-                    </p>
-                </CardContent>
-            </Card>
-        )
+        return null
     }
 
     const isEntity = selectedNode.nodeLabel === "Entity"
@@ -59,12 +47,21 @@ export function GraphInfoPanel({
     )
 
     return (
-        <Card className="fixed top-[70px] left-4 z-10 w-[420px] border-white/10 bg-black/95 backdrop-blur-xl">
-            <ScrollArea className="max-h-[75vh]">
+        <Card className="fixed top-[70px] left-4 z-[1000] w-[420px] max-h-[75vh] overflow-y-auto border-white/10 bg-black/95 backdrop-blur-xl">
                 <CardHeader className="pb-3">
-                    <CardTitle className="text-sm text-sky-400">
-                        {selectedNode.fullLabel}
-                    </CardTitle>
+                    <div className="flex items-start justify-between">
+                        <CardTitle className="text-sm text-sky-400">
+                            {selectedNode.fullLabel}
+                        </CardTitle>
+                        {onClose && (
+                            <button
+                                onClick={onClose}
+                                className="-mt-1 -mr-1 rounded p-1 text-muted-foreground transition-colors hover:bg-white/10 hover:text-white"
+                            >
+                                <X className="h-4 w-4" />
+                            </button>
+                        )}
+                    </div>
                     <div className="flex flex-wrap gap-1.5 pt-1">
                         {isEntity && (
                             <>
@@ -207,7 +204,6 @@ export function GraphInfoPanel({
                         </div>
                     )}
                 </CardContent>
-            </ScrollArea>
         </Card>
     )
 }

@@ -10,7 +10,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select"
-import { Search, SlidersHorizontal, MessageSquare, MessageSquareOff } from "lucide-react"
+import { Search, SlidersHorizontal, MessageSquare, MessageSquareOff, Map, Network } from "lucide-react"
 import { ENTITY_TYPES, DATE_RANGES } from "@/lib/constants"
 
 export interface GraphFilters {
@@ -21,12 +21,16 @@ export interface GraphFilters {
     dateRange: string
 }
 
+export type ViewMode = "graph" | "map"
+
 interface GraphToolbarProps {
     filters: GraphFilters
     onFiltersChange: (filters: GraphFilters) => void
     onApply: () => void
     chatOpen: boolean
     onChatToggle: () => void
+    viewMode: ViewMode
+    onViewModeChange: (mode: ViewMode) => void
 }
 
 export function GraphToolbar({
@@ -35,6 +39,8 @@ export function GraphToolbar({
     onApply,
     chatOpen,
     onChatToggle,
+    viewMode,
+    onViewModeChange,
 }: GraphToolbarProps) {
     const update = (patch: Partial<GraphFilters>) =>
         onFiltersChange({ ...filters, ...patch })
@@ -151,6 +157,34 @@ export function GraphToolbar({
             <Button size="sm" onClick={onApply} className="h-8 text-xs">
                 Apply
             </Button>
+
+            <Separator orientation="vertical" className="h-6 bg-white/10" />
+
+            {/* View Mode Toggle */}
+            <div className="flex items-center gap-1 rounded-md border border-white/10 bg-white/5 p-0.5">
+                <button
+                    onClick={() => onViewModeChange("graph")}
+                    className={`flex items-center gap-1 rounded px-2 py-1 text-[11px] transition-colors ${
+                        viewMode === "graph"
+                            ? "bg-sky-500/20 text-sky-400"
+                            : "text-muted-foreground hover:text-white"
+                    }`}
+                >
+                    <Network className="h-3 w-3" />
+                    Graph
+                </button>
+                <button
+                    onClick={() => onViewModeChange("map")}
+                    className={`flex items-center gap-1 rounded px-2 py-1 text-[11px] transition-colors ${
+                        viewMode === "map"
+                            ? "bg-emerald-500/20 text-emerald-400"
+                            : "text-muted-foreground hover:text-white"
+                    }`}
+                >
+                    <Map className="h-3 w-3" />
+                    Map
+                </button>
+            </div>
 
             <Button
                 variant={chatOpen ? "secondary" : "ghost"}
