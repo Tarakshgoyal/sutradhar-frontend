@@ -10,7 +10,8 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select"
-import { Search, SlidersHorizontal, MessageSquare, MessageSquareOff, Map, Network } from "lucide-react"
+import { Search, SlidersHorizontal, MessageSquare, MessageSquareOff, Map, Network, Clock } from "lucide-react"
+import { useEffect, useState } from "react"
 import { ENTITY_TYPES, DATE_RANGES } from "@/lib/constants"
 
 export interface GraphFilters {
@@ -33,6 +34,21 @@ interface GraphToolbarProps {
     onViewModeChange: (mode: ViewMode) => void
 }
 
+function UtcClock() {
+    const [time, setTime] = useState(() => new Date().toUTCString().slice(17, 25))
+    useEffect(() => {
+        const id = setInterval(() => setTime(new Date().toUTCString().slice(17, 25)), 1000)
+        return () => clearInterval(id)
+    }, [])
+    return (
+        <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground font-mono">
+            <Clock className="h-3 w-3" />
+            <span className="text-white/70">{time}</span>
+            <span className="text-[10px] text-muted-foreground/60">UTC</span>
+        </div>
+    )
+}
+
 export function GraphToolbar({
     filters,
     onFiltersChange,
@@ -46,7 +62,7 @@ export function GraphToolbar({
         onFiltersChange({ ...filters, ...patch })
 
     return (
-        <div className="fixed inset-x-0 top-0 z-20 flex flex-wrap items-center gap-3 border-b border-white/10 bg-black/95 px-5 py-2.5 backdrop-blur-xl">
+        <div className="fixed inset-x-0 top-0 z-20 flex items-center gap-3 border-b border-white/10 bg-black/95 px-5 py-2.5 backdrop-blur-xl overflow-x-auto">
             {/* Search */}
             <div className="flex items-center gap-2">
                 <Search className="h-3.5 w-3.5 text-muted-foreground" />
@@ -186,19 +202,23 @@ export function GraphToolbar({
                 </button>
             </div>
 
-            <Button
-                variant={chatOpen ? "secondary" : "ghost"}
-                size="sm"
-                onClick={onChatToggle}
-                className="ml-auto flex h-8 items-center gap-1.5 text-xs"
-            >
-                {chatOpen ? (
-                    <MessageSquareOff className="h-3.5 w-3.5" />
-                ) : (
-                    <MessageSquare className="h-3.5 w-3.5" />
-                )}
-                Chat
-            </Button>
+            <div className="ml-auto flex items-center gap-3">
+                <UtcClock />
+                <Separator orientation="vertical" className="h-6 bg-white/10" />
+                <Button
+                    variant={chatOpen ? "secondary" : "ghost"}
+                    size="sm"
+                    onClick={onChatToggle}
+                    className="flex h-8 items-center gap-1.5 text-xs"
+                >
+                    {chatOpen ? (
+                        <MessageSquareOff className="h-3.5 w-3.5" />
+                    ) : (
+                        <MessageSquare className="h-3.5 w-3.5" />
+                    )}
+                    Chat
+                </Button>
+            </div>
         </div>
     )
 }

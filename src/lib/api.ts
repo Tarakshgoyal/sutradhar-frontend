@@ -194,4 +194,95 @@ export async function fetchReport(domain: string): Promise<ReportResponse> {
   return resp.json()
 }
 
+// --- News ---
 
+export interface NewsArticle {
+  id: number
+  url: string
+  title: string
+  source: string
+  description: string
+  pub_date: string
+  top_image: string | null
+  importance_score: number
+  domain: string
+  cluster_id: string | null
+  cluster_label: string | null
+  scraped_at: string
+}
+
+export interface NewsListResponse {
+  total: number
+  page: number
+  per_page: number
+  articles: NewsArticle[]
+}
+
+export interface NewsListParams {
+  page?: number
+  per_page?: number
+  source?: string
+  domain?: string
+  min_score?: number
+  from_date?: string
+  to_date?: string
+  q?: string
+}
+
+export interface TrendingTopic {
+  cluster_id: string
+  cluster_label: string
+  domain: string
+  importance_score: number
+  article_count: number
+  first_seen: string
+  top_article: {
+    id: number
+    title: string
+    source: string
+    url: string
+    top_image: string | null
+    pub_date: string
+  }
+}
+
+export interface NewsDomain {
+  domain: string
+  article_count: number
+}
+
+export async function fetchTopNews(limit = 10, hours = 24): Promise<NewsArticle[]> {
+  const resp = await fetch(`${API_URL}/news/top?limit=${limit}&hours=${hours}`)
+  if (!resp.ok) throw new Error(`News API error: ${resp.status}`)
+  const data = await resp.json()
+  return data.articles ?? data
+}
+
+export async function fetchNewsList(params: NewsListParams = {}): Promise<NewsListResponse> {
+  const qs = new URLSearchParams()
+  if (params.page) qs.set("page", String(params.page))
+  if (params.per_page) qs.set("per_page", String(params.per_page))
+  if (params.source) qs.set("source", params.source)
+  if (params.domain) qs.set("domain", params.domain)
+  if (params.min_score !== undefined) qs.set("min_score", String(params.min_score))
+  if (params.from_date) qs.set("from_date", params.from_date)
+  if (params.to_date) qs.set("to_date", params.to_date)
+  if (params.q) qs.set("q", params.q)
+  const resp = await fetch(`${API_URL}/news?${qs}`)
+  if (!resp.ok) throw new Error(`News API error: ${resp.status}`)
+  return resp.json()
+}
+
+export async function fetchTrendingTopics(hours = 24, limit = 50): Promise<TrendingTopic[]> {
+  const resp = await fetch(`${API_URL}/news/topics?hours=${hours}&limit=${limit}`)
+  if (!resp.ok) throw new Error(`Topics API error: ${resp.status}`)
+  const data = await resp.json()
+  return data.topics ?? data
+}
+
+export async function fetchNewsDomains(): Promise<NewsDomain[]> {
+  const resp = await fetch(`${API_URL}/news/domains`)
+  if (!resp.ok) throw new Error(`Domains API error: ${resp.status}`)
+  const data = await resp.json()
+  return data.domains ?? data
+}
