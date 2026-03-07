@@ -163,10 +163,10 @@ export interface ReportInference {
 
 export interface Report {
   executive_summary: string
-  key_developments: KeyDevelopment[]
-  key_actors: KeyActor[]
-  critical_relationships: CriticalRelationship[]
-  trends: string
+  key_developments?: KeyDevelopment[]
+  key_actors?: KeyActor[]
+  critical_relationships?: CriticalRelationship[]
+  trends?: string
   domain: string
   date_range: string
   generated_at: string
@@ -285,4 +285,77 @@ export async function fetchNewsDomains(): Promise<NewsDomain[]> {
   if (!resp.ok) throw new Error(`Domains API error: ${resp.status}`)
   const data = await resp.json()
   return data.domains ?? data
+}
+
+// --- Signals ---
+
+export interface Signal {
+  id: number
+  type: "entity_spike" | "new_entity" | "topic_spike"
+  severity: "high" | "medium"
+  entity_name: string | null
+  entity_type: string | null
+  cluster_id: string | null
+  cluster_label: string | null
+  domain: string | null
+  spike_ratio: number
+  current_count: number
+  baseline_count: number
+  detected_at: string
+  expires_at: string
+}
+
+export interface SignalsResponse {
+  count: number
+  signals: Signal[]
+}
+
+export async function fetchSignals(params: {
+  signal_type?: string
+  severity?: string
+  limit?: number
+} = {}): Promise<SignalsResponse> {
+  const qs = new URLSearchParams()
+  if (params.signal_type) qs.set("signal_type", params.signal_type)
+  if (params.severity) qs.set("severity", params.severity)
+  if (params.limit) qs.set("limit", String(params.limit))
+  const resp = await fetch(`${API_URL}/signals?${qs}`)
+  if (!resp.ok) throw new Error(`Signals API error: ${resp.status}`)
+  return resp.json()
+}
+
+// --- Entity Timeline ---
+
+export interface TimelineEvent {
+  event_name: string
+  event_type: string | null
+  date: string
+  description: string | null
+  co_entities: string[]
+  sources: {
+    url: string
+    title: string
+    source: string
+    pub_date: string
+  }[]
+}
+
+export interface EntityTimelineResponse {
+  entity: { name: string; type: string }
+  total: number
+  offset: number
+  limit: number
+  timeline: TimelineEvent[]
+}
+
+export async function fetchEntityTimeline(
+  entityName: string,
+  limit = 50,
+  offset = 0
+): Promise<EntityTimelineResponse> {
+  const resp = await fetch(
+    `${API_URL}/entities/${encodeURIComponent(entityName)}/timeline?limit=${limit}&offset=${offset}`
+  )
+  if (!resp.ok) throw new Error(`Timeline API error: ${resp.status}`)
+  return resp.json()
 }

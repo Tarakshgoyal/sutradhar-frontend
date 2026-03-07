@@ -1,4 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react"
+import { ResponsiveGridLayout, useContainerWidth } from "react-grid-layout"
+import "react-grid-layout/css/styles.css"
+import "react-resizable/css/styles.css"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -8,11 +11,13 @@ import {
     fetchNewsList,
     fetchTrendingTopics,
     fetchNewsDomains,
+    fetchSignals,
     type DomainInfo,
     type Report,
     type NewsArticle,
     type TrendingTopic,
     type NewsDomain,
+    type Signal,
 } from "@/lib/api"
 import {
     ChevronUp,
@@ -32,9 +37,43 @@ import {
     ChevronLeft,
     ChevronRight,
     Star,
+    Bell,
+    GripVertical,
 } from "lucide-react"
 
-type Tab = "news" | "topics" | "reports"
+import type { Layouts } from "react-grid-layout"
+
+const LAYOUT_STORAGE_KEY = "dashboard-card-layouts"
+
+function getStoredLayouts(): Layouts | null {
+    try {
+        const raw = localStorage.getItem(LAYOUT_STORAGE_KEY)
+        return raw ? JSON.parse(raw) : null
+    } catch { return null }
+}
+
+const defaultLayouts: Layouts = {
+    lg: [
+        { i: "news", x: 0, y: 0, w: 4, h: 2, minW: 3, minH: 1 },
+        { i: "signals", x: 4, y: 0, w: 4, h: 1, minW: 2, minH: 1 },
+        { i: "topics", x: 4, y: 1, w: 4, h: 1, minW: 2, minH: 1 },
+        { i: "reports", x: 8, y: 0, w: 4, h: 2, minW: 3, minH: 1 },
+    ],
+    md: [
+        { i: "news", x: 0, y: 0, w: 5, h: 2, minW: 3, minH: 1 },
+        { i: "signals", x: 5, y: 0, w: 5, h: 1, minW: 2, minH: 1 },
+        { i: "topics", x: 5, y: 1, w: 5, h: 1, minW: 2, minH: 1 },
+        { i: "reports", x: 0, y: 2, w: 10, h: 2, minW: 3, minH: 1 },
+    ],
+    sm: [
+        { i: "news", x: 0, y: 0, w: 6, h: 1, minW: 3, minH: 1 },
+        { i: "signals", x: 0, y: 1, w: 6, h: 1, minW: 2, minH: 1 },
+        { i: "topics", x: 0, y: 2, w: 6, h: 1, minW: 2, minH: 1 },
+        { i: "reports", x: 0, y: 3, w: 6, h: 1, minW: 3, minH: 1 },
+    ],
+}
+
+type Tab = "news" | "topics" | "signals" | "reports"
 
 const DOMAIN_COLORS: Record<string, string> = {
     geopolitics: "text-red-400 bg-red-950/30 border-red-500/20",
@@ -77,9 +116,60 @@ function relativeTime(dateStr: string) {
     }
 }
 
+function DashboardCard({
+    title,
+    icon: Icon,
+    accentColor,
+    badge,
+    badgeColor,
+    liveIndicator,
+    children,
+}: {
+    title: string
+    icon: React.ElementType
+    accentColor: string
+    badge?: string
+    badgeColor?: string
+    liveIndicator?: boolean
+    children: React.ReactNode
+}) {
+    return (
+        <div className="flex flex-col h-full rounded-lg border border-white/[0.08] bg-[#111111]/95 backdrop-blur-sm overflow-hidden shadow-lg shadow-black/20">
+            {/* Card Header — drag handle */}
+            <div className="card-drag-handle flex items-center gap-2 px-3 py-2 border-b border-white/[0.06] bg-white/[0.02] cursor-grab active:cursor-grabbing shrink-0 select-none">
+                <Icon className={`h-3.5 w-3.5 ${accentColor}`} />
+                <span className={`text-[11px] font-bold uppercase tracking-wider ${accentColor}`}>
+                    {title}
+                </span>
+                {liveIndicator && (
+                    <span className="flex items-center gap-1 ml-1">
+                        <span className="relative flex h-2 w-2">
+                            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-75" />
+                            <span className="relative inline-flex h-2 w-2 rounded-full bg-red-500" />
+                        </span>
+                        <span className="text-[9px] font-bold uppercase tracking-wider text-red-400">Live</span>
+                    </span>
+                )}
+                {badge && (
+                    <span className={`ml-1 rounded-full px-1.5 py-0.5 text-[9px] font-bold text-white tabular-nums ${badgeColor || "bg-white/10"}`}>
+                        {badge}
+                    </span>
+                )}
+                <GripVertical className="ml-auto h-3.5 w-3.5 text-white/20" />
+            </div>
+            {/* Card Content */}
+            <div className="flex-1 overflow-hidden">
+                {children}
+            </div>
+        </div>
+    )
+}
+
 export function ReportsPanel() {
-    const [expanded, setExpanded] = useState(false)
-    const [activeTab, setActiveTab] = useState<Tab>("news")
+    const [expanded, setExpanded] = useState(true)
+    const [layouts, setLayouts] = useState<Layouts>(() => getStoredLayouts() ?? defaultLayouts)
+    const { containerRef, width, mounted } = useContainerWidth()
+    const [rowHeight, setRowHeight] = useState(200)
 
     // — reports state —
     const [domains, setDomains] = useState<DomainInfo[]>([])
@@ -101,6 +191,25 @@ export function ReportsPanel() {
     const [topics, setTopics] = useState<TrendingTopic[]>([])
     const [topicsLoading, setTopicsLoading] = useState(false)
     const [topicsHours, setTopicsHours] = useState(24)
+
+    // — signals state —
+    const [signals, setSignals] = useState<Signal[]>([])
+    const [signalsLoading, setSignalsLoading] = useState(false)
+    const [signalSeverity, setSignalSeverity] = useState<string>("")
+
+    // Calculate rowHeight from container
+    useEffect(() => {
+        if (!expanded || !containerRef.current) return
+        const calcHeight = () => {
+            if (!containerRef.current) return
+            const h = containerRef.current.clientHeight
+            setRowHeight(Math.max(120, Math.floor((h - 32) / 2)))
+        }
+        calcHeight()
+        const ro = new ResizeObserver(calcHeight)
+        ro.observe(containerRef.current)
+        return () => ro.disconnect()
+    }, [expanded])
 
     // fetch report domains once
     useEffect(() => {
@@ -129,10 +238,10 @@ export function ReportsPanel() {
     }, [])
 
     useEffect(() => {
-        if (expanded && activeTab === "reports" && domains.length > 0 && !activeDomain) {
+        if (domains.length > 0 && !activeDomain) {
             loadReport(domains[0].domain)
         }
-    }, [expanded, activeTab, domains, activeDomain, loadReport])
+    }, [domains, activeDomain, loadReport])
 
     const loadNews = useCallback(async (page: number, filters: typeof newsFilter) => {
         setNewsLoading(true)
@@ -152,11 +261,10 @@ export function ReportsPanel() {
         }
     }, [])
 
+    // Load news eagerly
     useEffect(() => {
-        if (expanded && activeTab === "news") {
-            loadNews(newsPage, newsFilter)
-        }
-    }, [expanded, activeTab, newsPage]) // eslint-disable-line react-hooks/exhaustive-deps
+        loadNews(newsPage, newsFilter)
+    }, [newsPage]) // eslint-disable-line react-hooks/exhaustive-deps
 
     const loadTopics = useCallback(async (hours: number) => {
         setTopicsLoading(true)
@@ -170,22 +278,27 @@ export function ReportsPanel() {
         }
     }, [])
 
+    // Load topics eagerly
     useEffect(() => {
-        if (expanded && activeTab === "topics") {
-            loadTopics(topicsHours)
-        }
-    }, [expanded, activeTab, topicsHours, loadTopics])
+        loadTopics(topicsHours)
+    }, [topicsHours, loadTopics])
 
-    function handleTabClick(tab: Tab) {
-        if (!expanded) {
-            setExpanded(true)
-            setActiveTab(tab)
-        } else if (activeTab === tab) {
-            setExpanded(false)
-        } else {
-            setActiveTab(tab)
+    const loadSignals = useCallback(async (severity: string) => {
+        setSignalsLoading(true)
+        try {
+            const data = await fetchSignals({ severity: severity || undefined, limit: 100 })
+            setSignals(data.signals)
+        } catch {
+            setSignals([])
+        } finally {
+            setSignalsLoading(false)
         }
-    }
+    }, [])
+
+    // Load signals eagerly
+    useEffect(() => {
+        loadSignals(signalSeverity)
+    }, [signalSeverity, loadSignals])
 
     function handleSearchChange(q: string) {
         const next = { ...newsFilter, q }
@@ -212,107 +325,148 @@ export function ReportsPanel() {
     }
 
     const totalPages = newsData ? Math.ceil(newsData.total / 20) : 1
+    const highSignalCount = signals.filter((s) => s.severity === "high").length
 
-    const tabItems: { id: Tab; label: string; icon: React.ElementType; color: string }[] = [
-        { id: "news", label: "News Feed", icon: Newspaper, color: "text-sky-400" },
-        { id: "topics", label: "Trending Topics", icon: Hash, color: "text-green-400" },
-        { id: "reports", label: "Intelligence", icon: FileText, color: "text-amber-400" },
-    ]
+    const handleLayoutChange = (_: unknown, allLayouts: Layouts) => {
+        setLayouts(allLayouts)
+        try { localStorage.setItem(LAYOUT_STORAGE_KEY, JSON.stringify(allLayouts)) } catch { /* ignore */ }
+    }
 
     return (
         <div
-            className={`fixed right-0 bottom-0 left-0 z-[15] border-t border-white/10 bg-[#0a0a0a]/98 transition-all duration-300 ${expanded ? "h-[58vh]" : "h-11"}`}
+            className={`fixed right-0 bottom-0 left-0 z-[15] transition-all duration-300 ${
+                expanded ? "h-[55vh]" : "h-9"
+            }`}
         >
-            {/* Tab bar — always visible */}
-            <div className="flex h-11 items-center gap-0 border-b border-white/5 px-3">
-                {tabItems.map((t) => (
-                    <button
-                        key={t.id}
-                        onClick={() => handleTabClick(t.id)}
-                        className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-colors mr-1 ${
-                            expanded && activeTab === t.id
-                                ? `${t.color} bg-white/5`
-                                : "text-muted-foreground hover:text-white hover:bg-white/5"
-                        }`}
-                    >
-                        <t.icon className="h-3.5 w-3.5" />
-                        {t.label}
-                        {t.id === "news" && newsData && (
-                            <span className="text-[10px] text-muted-foreground ml-0.5">
-                                {newsData.total}
-                            </span>
-                        )}
-                        {t.id === "topics" && topics.length > 0 && (
-                            <span className="text-[10px] text-muted-foreground ml-0.5">
-                                {topics.length}
-                            </span>
-                        )}
-                    </button>
-                ))}
-
-                {/* Collapsed preview — top headline */}
+            {/* Toggle bar */}
+            <div className="flex h-9 items-center gap-3 border-t border-white/10 bg-[#0a0a0a] px-4">
+                <span className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground/70">
+                    Dashboard
+                </span>
                 {!expanded && newsData?.articles[0] && (
-                    <div className="ml-4 flex items-center gap-2 min-w-0 flex-1">
+                    <div className="ml-2 flex items-center gap-2 min-w-0 flex-1">
+                        <span className="relative flex h-1.5 w-1.5">
+                            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-75" />
+                            <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-red-500" />
+                        </span>
                         <span className={`text-[10px] font-semibold ${scoreColor(newsData.articles[0].importance_score)}`}>
                             {newsData.articles[0].importance_score.toFixed(1)}
                         </span>
                         <span className="text-[11px] text-muted-foreground truncate">
                             {newsData.articles[0].title}
                         </span>
-                        <Badge variant="outline" className={`shrink-0 border text-[9px] ${domainClass(newsData.articles[0].domain)}`}>
-                            {newsData.articles[0].domain}
-                        </Badge>
                     </div>
                 )}
-
-                <div className="ml-auto">
-                    <button
-                        onClick={() => setExpanded((v) => !v)}
-                        className="p-1.5 text-muted-foreground hover:text-white"
-                    >
-                        {expanded ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
-                    </button>
-                </div>
+                {!expanded && highSignalCount > 0 && (
+                    <span className="flex items-center gap-1">
+                        <Bell className="h-3 w-3 text-red-400" />
+                        <span className="rounded-full bg-red-500/80 px-1.5 text-[9px] font-bold text-white tabular-nums">
+                            {highSignalCount}
+                        </span>
+                    </span>
+                )}
+                <button
+                    onClick={() => setExpanded((v) => !v)}
+                    className="ml-auto p-1 text-muted-foreground hover:text-white transition-colors"
+                >
+                    {expanded ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
+                </button>
             </div>
 
-            {/* Expanded content */}
+            {/* Card grid dashboard */}
             {expanded && (
-                <div className="flex h-[calc(100%-44px)]">
-                    {activeTab === "news" && (
-                        <NewsFeedTab
-                            articles={newsData?.articles ?? []}
-                            total={newsData?.total ?? 0}
-                            loading={newsLoading}
-                            page={newsPage}
-                            totalPages={totalPages}
-                            onPageChange={(p) => setNewsPage(p)}
-                            domains={newsDomains}
-                            filter={newsFilter}
-                            onDomainChange={handleDomainFilterChange}
-                            onSearchChange={handleSearchChange}
-                            onScoreChange={handleScoreFilterChange}
-                        />
-                    )}
-                    {activeTab === "topics" && (
-                        <TrendingTopicsTab
-                            topics={topics}
-                            loading={topicsLoading}
-                            hours={topicsHours}
-                            onHoursChange={setTopicsHours}
-                        />
-                    )}
-                    {activeTab === "reports" && (
-                        <ReportsTab
-                            domains={domains}
-                            domainsLoading={domainsLoading}
-                            activeDomain={activeDomain}
-                            report={report}
-                            loading={reportLoading}
-                            activeSection={activeSection}
-                            onSelectDomain={loadReport}
-                            onSectionChange={setActiveSection}
-                        />
-                    )}
+                <div
+                    ref={containerRef}
+                    className="h-[calc(100%-36px)] bg-[#0a0a0a]/98"
+                >
+                    {mounted && <ResponsiveGridLayout
+                        width={width || 1200}
+                        layouts={layouts}
+                        onLayoutChange={handleLayoutChange}
+                        breakpoints={{ lg: 1200, md: 996, sm: 768 }}
+                        cols={{ lg: 12, md: 10, sm: 6 }}
+                        rowHeight={rowHeight}
+                        draggableHandle=".card-drag-handle"
+                        margin={[8, 8]}
+                        containerPadding={[8, 4]}
+                        isResizable={true}
+                    >
+                        <div key="news">
+                            <DashboardCard
+                                title="News Feed"
+                                icon={Newspaper}
+                                accentColor="text-sky-400"
+                                liveIndicator
+                                badge={newsData ? String(newsData.total) : undefined}
+                                badgeColor="bg-sky-500/20"
+                            >
+                                <NewsFeedTab
+                                    articles={newsData?.articles ?? []}
+                                    total={newsData?.total ?? 0}
+                                    loading={newsLoading}
+                                    page={newsPage}
+                                    totalPages={totalPages}
+                                    onPageChange={(p) => setNewsPage(p)}
+                                    domains={newsDomains}
+                                    filter={newsFilter}
+                                    onDomainChange={handleDomainFilterChange}
+                                    onSearchChange={handleSearchChange}
+                                    onScoreChange={handleScoreFilterChange}
+                                />
+                            </DashboardCard>
+                        </div>
+                        <div key="signals">
+                            <DashboardCard
+                                title="Signals"
+                                icon={Bell}
+                                accentColor="text-red-400"
+                                liveIndicator
+                                badge={highSignalCount > 0 ? String(highSignalCount) : undefined}
+                                badgeColor="bg-red-500/80"
+                            >
+                                <SignalsTab
+                                    signals={signals}
+                                    loading={signalsLoading}
+                                    severity={signalSeverity}
+                                    onSeverityChange={setSignalSeverity}
+                                />
+                            </DashboardCard>
+                        </div>
+                        <div key="topics">
+                            <DashboardCard
+                                title="Trending Topics"
+                                icon={Hash}
+                                accentColor="text-green-400"
+                                badge={topics.length > 0 ? String(topics.length) : undefined}
+                                badgeColor="bg-green-500/20"
+                            >
+                                <TrendingTopicsTab
+                                    topics={topics}
+                                    loading={topicsLoading}
+                                    hours={topicsHours}
+                                    onHoursChange={setTopicsHours}
+                                />
+                            </DashboardCard>
+                        </div>
+                        <div key="reports">
+                            <DashboardCard
+                                title="Intelligence"
+                                icon={FileText}
+                                accentColor="text-amber-400"
+                            >
+                                <ReportsTab
+                                    domains={domains}
+                                    domainsLoading={domainsLoading}
+                                    activeDomain={activeDomain}
+                                    report={report}
+                                    loading={reportLoading}
+                                    activeSection={activeSection}
+                                    onSelectDomain={loadReport}
+                                    onSectionChange={setActiveSection}
+                                />
+                            </DashboardCard>
+                        </div>
+                    </ResponsiveGridLayout>}
                 </div>
             )}
         </div>
@@ -607,6 +761,118 @@ function TopicCard({ topic }: { topic: TrendingTopic }) {
     )
 }
 
+// ─── Signals Tab ────────────────────────────────────────────────────────────
+
+const SIGNAL_TYPE_LABEL: Record<string, string> = {
+    entity_spike: "Entity Spike",
+    topic_spike: "Topic Spike",
+    new_entity: "New Entity",
+}
+
+function SignalsTab({
+    signals,
+    loading,
+    severity,
+    onSeverityChange,
+}: {
+    signals: Signal[]
+    loading: boolean
+    severity: string
+    onSeverityChange: (s: string) => void
+}) {
+    return (
+        <div className="flex flex-1 flex-col min-w-0">
+            {/* Filter bar */}
+            <div className="flex shrink-0 items-center gap-2 border-b border-white/5 px-3 py-1.5">
+                <Bell className="h-3.5 w-3.5 text-red-400" />
+                <span className="text-xs text-muted-foreground">Severity:</span>
+                {(["", "high", "medium"] as const).map((s) => (
+                    <button
+                        key={s}
+                        onClick={() => onSeverityChange(s)}
+                        className={`px-2 py-0.5 rounded text-[10px] font-medium transition-colors ${
+                            severity === s
+                                ? s === "high" ? "bg-red-500/20 text-red-400"
+                                : s === "medium" ? "bg-orange-500/20 text-orange-400"
+                                : "bg-white/10 text-white"
+                                : "text-muted-foreground hover:text-white hover:bg-white/5"
+                        }`}
+                    >
+                        {s === "" ? "All" : s.charAt(0).toUpperCase() + s.slice(1)}
+                    </button>
+                ))}
+                <span className="ml-auto text-[10px] text-muted-foreground">{signals.length} active signals</span>
+            </div>
+
+            {/* Signals list */}
+            <div className="flex-1 overflow-y-auto">
+                {loading ? (
+                    <div className="flex items-center justify-center py-8">
+                        <Loader2 className="h-4 w-4 animate-spin text-red-400" />
+                        <span className="ml-2 text-xs text-muted-foreground">Loading…</span>
+                    </div>
+                ) : signals.length === 0 ? (
+                    <p className="py-8 text-center text-xs text-muted-foreground">No active signals</p>
+                ) : (
+                    <div className="divide-y divide-white/[0.04]">
+                        {signals.map((s) => (
+                            <SignalRow key={s.id} signal={s} />
+                        ))}
+                    </div>
+                )}
+            </div>
+        </div>
+    )
+}
+
+function SignalRow({ signal }: { signal: Signal }) {
+    const isHigh = signal.severity === "high"
+    return (
+        <div className="flex items-center gap-3 px-3 py-2.5 hover:bg-white/[0.03] transition-colors">
+            {/* Spike ratio */}
+            <div className={`shrink-0 text-center w-12`}>
+                <div className={`text-sm font-bold tabular-nums ${isHigh ? "text-red-400" : "text-orange-400"}`}>
+                    {signal.spike_ratio.toFixed(1)}x
+                </div>
+                <div className="text-[9px] text-muted-foreground">spike</div>
+            </div>
+
+            {/* Content */}
+            <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 mb-0.5">
+                    <span className="text-xs font-semibold text-white">
+                        {signal.entity_name ?? signal.cluster_label ?? "Unknown"}
+                    </span>
+                    <Badge
+                        variant="outline"
+                        className={`border text-[9px] px-1 py-0 h-4 ${isHigh ? "border-red-500/30 text-red-400" : "border-orange-500/30 text-orange-400"}`}
+                    >
+                        {signal.severity}
+                    </Badge>
+                    <Badge variant="secondary" className="bg-white/5 text-[9px] px-1 py-0 h-4 text-muted-foreground">
+                        {SIGNAL_TYPE_LABEL[signal.type] ?? signal.type}
+                    </Badge>
+                    {signal.entity_type && (
+                        <Badge variant="secondary" className="bg-sky-950/30 text-[9px] px-1 py-0 h-4 text-sky-400">
+                            {signal.entity_type}
+                        </Badge>
+                    )}
+                </div>
+                <div className="text-[10px] text-muted-foreground">
+                    {signal.current_count} mentions now vs {signal.baseline_count.toFixed(1)} baseline
+                    <span className="mx-1.5 opacity-40">·</span>
+                    expires {relativeTime(signal.expires_at)}
+                </div>
+            </div>
+
+            {/* Detected time */}
+            <div className="shrink-0 text-[10px] text-muted-foreground">
+                {relativeTime(signal.detected_at)}
+            </div>
+        </div>
+    )
+}
+
 // ─── Intelligence Reports Tab ───────────────────────────────────────────────
 
 const reportSections = [
@@ -735,13 +1001,16 @@ function ReportContent({ report, section }: { report: Report; section: string })
                 </div>
             )
 
-        case "developments":
+        case "developments": {
+            const developments = report.key_developments ?? []
             return (
                 <div className="max-w-4xl space-y-3">
                     <h3 className="text-sm font-semibold text-amber-400 flex items-center gap-2">
-                        <Zap className="h-4 w-4" /> Key Developments ({report.key_developments.length})
+                        <Zap className="h-4 w-4" /> Key Developments ({developments.length})
                     </h3>
-                    {report.key_developments.map((d, i) => (
+                    {developments.length === 0 ? (
+                        <p className="text-xs text-muted-foreground">No key developments available for this report.</p>
+                    ) : developments.map((d, i) => (
                         <div key={i} className="rounded-lg border border-white/5 bg-white/[0.02] p-3">
                             <div className="flex items-start justify-between gap-2 mb-1.5">
                                 <h4 className="text-xs font-medium text-white">{d.title}</h4>
@@ -761,34 +1030,44 @@ function ReportContent({ report, section }: { report: Report; section: string })
                     ))}
                 </div>
             )
+        }
 
-        case "actors":
+        case "actors": {
+            const actors = report.key_actors ?? []
             return (
                 <div className="max-w-4xl space-y-3">
                     <h3 className="text-sm font-semibold text-amber-400 flex items-center gap-2">
-                        <Users className="h-4 w-4" /> Key Actors ({report.key_actors.length})
+                        <Users className="h-4 w-4" /> Key Actors ({actors.length})
                     </h3>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                        {report.key_actors.map((a, i) => (
-                            <div key={i} className="rounded-lg border border-white/5 bg-white/[0.02] p-3">
-                                <div className="flex items-center gap-2 mb-1">
-                                    <span className="text-xs font-medium text-white">{a.name}</span>
-                                    <Badge variant="secondary" className="bg-white/5 text-[10px]">{a.type}</Badge>
+                    {actors.length === 0 ? (
+                        <p className="text-xs text-muted-foreground">No key actors available for this report.</p>
+                    ) : (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                            {actors.map((a, i) => (
+                                <div key={i} className="rounded-lg border border-white/5 bg-white/[0.02] p-3">
+                                    <div className="flex items-center gap-2 mb-1">
+                                        <span className="text-xs font-medium text-white">{a.name}</span>
+                                        <Badge variant="secondary" className="bg-white/5 text-[10px]">{a.type}</Badge>
+                                    </div>
+                                    <p className="text-[11px] text-gray-400 leading-relaxed">{a.role}</p>
                                 </div>
-                                <p className="text-[11px] text-gray-400 leading-relaxed">{a.role}</p>
-                            </div>
-                        ))}
-                    </div>
+                            ))}
+                        </div>
+                    )}
                 </div>
             )
+        }
 
-        case "relationships":
+        case "relationships": {
+            const relationships = report.critical_relationships ?? []
             return (
                 <div className="max-w-4xl space-y-3">
                     <h3 className="text-sm font-semibold text-amber-400 flex items-center gap-2">
-                        <Link2 className="h-4 w-4" /> Critical Relationships ({report.critical_relationships.length})
+                        <Link2 className="h-4 w-4" /> Critical Relationships ({relationships.length})
                     </h3>
-                    {report.critical_relationships.map((r, i) => (
+                    {relationships.length === 0 ? (
+                        <p className="text-xs text-muted-foreground">No critical relationships available for this report.</p>
+                    ) : relationships.map((r, i) => (
                         <div key={i} className="rounded-lg border border-white/5 bg-white/[0.02] p-3">
                             <div className="flex items-center gap-2 mb-1.5 text-xs">
                                 <span className="font-medium text-sky-400">{r.source}</span>
@@ -802,6 +1081,7 @@ function ReportContent({ report, section }: { report: Report; section: string })
                     ))}
                 </div>
             )
+        }
 
         case "trends":
             return (
@@ -809,7 +1089,11 @@ function ReportContent({ report, section }: { report: Report; section: string })
                     <h3 className="text-sm font-semibold text-amber-400 flex items-center gap-2">
                         <TrendingUp className="h-4 w-4" /> Trends Analysis
                     </h3>
-                    <p className="text-xs leading-relaxed text-gray-300">{report.trends}</p>
+                    {report.trends ? (
+                        <p className="text-xs leading-relaxed text-gray-300">{report.trends}</p>
+                    ) : (
+                        <p className="text-xs text-muted-foreground">No trends analysis available for this report.</p>
+                    )}
                 </div>
             )
 

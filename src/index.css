@@ -128,6 +128,42 @@
     }
 }
 
+/* react-grid-layout overrides for dark dashboard */
+.react-grid-item {
+    transition: all 200ms ease;
+}
+.react-grid-item.react-grid-placeholder {
+    background: rgba(56, 189, 248, 0.12) !important;
+    border: 1px dashed rgba(56, 189, 248, 0.4) !important;
+    border-radius: 0.5rem;
+    opacity: 1 !important;
+}
+.react-grid-item > .react-resizable-handle {
+    background-image: none !important;
+}
+.react-grid-item > .react-resizable-handle::after {
+    content: "";
+    position: absolute;
+    right: 4px;
+    bottom: 4px;
+    width: 8px;
+    height: 8px;
+    border-right: 2px solid rgba(255, 255, 255, 0.15);
+    border-bottom: 2px solid rgba(255, 255, 255, 0.15);
+    border-radius: 0 0 2px 0;
+}
+.react-grid-item:hover > .react-resizable-handle::after {
+    border-color: rgba(255, 255, 255, 0.35);
+}
+.react-grid-item.react-draggable-dragging {
+    z-index: 100;
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+}
+/* Ensure grid children fill their cell */
+.react-grid-item > div {
+    height: 100%;
+}
+
 /* Chat markdown prose styles */
 .chat-markdown {
   h1, h2, h3, h4 { font-weight: 600; margin-top: 0.75em; margin-bottom: 0.25em; }
