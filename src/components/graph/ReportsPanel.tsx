@@ -39,8 +39,10 @@ import {
     Star,
     Bell,
     GripVertical,
+    ThermometerSun,
 } from "lucide-react"
 
+import { WeatherTab } from "@/components/graph/WeatherTab"
 import type { Layouts } from "react-grid-layout"
 
 const LAYOUT_STORAGE_KEY = "dashboard-card-layouts"
@@ -54,26 +56,29 @@ function getStoredLayouts(): Layouts | null {
 
 const defaultLayouts: Layouts = {
     lg: [
-        { i: "news", x: 0, y: 0, w: 4, h: 2, minW: 3, minH: 1 },
-        { i: "signals", x: 4, y: 0, w: 4, h: 1, minW: 2, minH: 1 },
-        { i: "topics", x: 4, y: 1, w: 4, h: 1, minW: 2, minH: 1 },
-        { i: "reports", x: 8, y: 0, w: 4, h: 2, minW: 3, minH: 1 },
+        { i: "weather", x: 0, y: 0, w: 3, h: 2, minW: 2, minH: 1 },
+        { i: "news", x: 3, y: 0, w: 3, h: 2, minW: 3, minH: 1 },
+        { i: "signals", x: 6, y: 0, w: 3, h: 1, minW: 2, minH: 1 },
+        { i: "topics", x: 6, y: 1, w: 3, h: 1, minW: 2, minH: 1 },
+        { i: "reports", x: 9, y: 0, w: 3, h: 2, minW: 3, minH: 1 },
     ],
     md: [
-        { i: "news", x: 0, y: 0, w: 5, h: 2, minW: 3, minH: 1 },
-        { i: "signals", x: 5, y: 0, w: 5, h: 1, minW: 2, minH: 1 },
-        { i: "topics", x: 5, y: 1, w: 5, h: 1, minW: 2, minH: 1 },
-        { i: "reports", x: 0, y: 2, w: 10, h: 2, minW: 3, minH: 1 },
+        { i: "weather", x: 0, y: 0, w: 5, h: 2, minW: 3, minH: 1 },
+        { i: "news", x: 5, y: 0, w: 5, h: 2, minW: 3, minH: 1 },
+        { i: "signals", x: 0, y: 2, w: 5, h: 1, minW: 2, minH: 1 },
+        { i: "topics", x: 5, y: 2, w: 5, h: 1, minW: 2, minH: 1 },
+        { i: "reports", x: 0, y: 3, w: 10, h: 2, minW: 3, minH: 1 },
     ],
     sm: [
-        { i: "news", x: 0, y: 0, w: 6, h: 1, minW: 3, minH: 1 },
-        { i: "signals", x: 0, y: 1, w: 6, h: 1, minW: 2, minH: 1 },
-        { i: "topics", x: 0, y: 2, w: 6, h: 1, minW: 2, minH: 1 },
-        { i: "reports", x: 0, y: 3, w: 6, h: 1, minW: 3, minH: 1 },
+        { i: "weather", x: 0, y: 0, w: 6, h: 1, minW: 3, minH: 1 },
+        { i: "news", x: 0, y: 1, w: 6, h: 1, minW: 3, minH: 1 },
+        { i: "signals", x: 0, y: 2, w: 6, h: 1, minW: 2, minH: 1 },
+        { i: "topics", x: 0, y: 3, w: 6, h: 1, minW: 2, minH: 1 },
+        { i: "reports", x: 0, y: 4, w: 6, h: 1, minW: 3, minH: 1 },
     ],
 }
 
-type Tab = "news" | "topics" | "signals" | "reports"
+type Tab = "weather" | "news" | "topics" | "signals" | "reports"
 
 const DOMAIN_COLORS: Record<string, string> = {
     geopolitics: "text-red-400 bg-red-950/30 border-red-500/20",
@@ -170,6 +175,36 @@ export function ReportsPanel() {
     const [layouts, setLayouts] = useState<Layouts>(() => getStoredLayouts() ?? defaultLayouts)
     const { containerRef, width, mounted } = useContainerWidth()
     const [rowHeight, setRowHeight] = useState(200)
+    const [panelHeight, setPanelHeight] = useState(() => {
+        try { const v = localStorage.getItem("dashboard-panel-height"); return v ? Number(v) : Math.round(window.innerHeight * 0.55) } catch { return Math.round(window.innerHeight * 0.55) }
+    })
+    const isDragging = useRef(false)
+
+    const onResizeStart = useCallback((e: React.MouseEvent) => {
+        e.preventDefault()
+        isDragging.current = true
+        const startY = e.clientY
+        const startH = panelHeight
+        let latestH = startH
+        const onMove = (ev: MouseEvent) => {
+            if (!isDragging.current) return
+            const delta = startY - ev.clientY
+            latestH = Math.max(120, Math.min(window.innerHeight - 80, startH + delta))
+            setPanelHeight(latestH)
+        }
+        const onUp = () => {
+            isDragging.current = false
+            document.removeEventListener("mousemove", onMove)
+            document.removeEventListener("mouseup", onUp)
+            document.body.style.cursor = ""
+            document.body.style.userSelect = ""
+            try { localStorage.setItem("dashboard-panel-height", String(latestH)) } catch { /* ignore */ }
+        }
+        document.body.style.cursor = "row-resize"
+        document.body.style.userSelect = "none"
+        document.addEventListener("mousemove", onMove)
+        document.addEventListener("mouseup", onUp)
+    }, [panelHeight])
 
     // — reports state —
     const [domains, setDomains] = useState<DomainInfo[]>([])
@@ -220,7 +255,7 @@ export function ReportsPanel() {
 
     // fetch news domains once
     useEffect(() => {
-        fetchNewsDomains().then(setNewsDomains).catch(() => {})
+        fetchNewsDomains().then(setNewsDomains).catch(() => { })
     }, [])
 
     const loadReport = useCallback(async (domain: string) => {
@@ -334,10 +369,18 @@ export function ReportsPanel() {
 
     return (
         <div
-            className={`fixed right-0 bottom-0 left-0 z-[15] transition-all duration-300 ${
-                expanded ? "h-[55vh]" : "h-9"
-            }`}
+            className={`fixed right-0 bottom-0 left-0 z-[15] ${expanded ? "" : "h-9"}`}
+            style={expanded ? { height: panelHeight } : undefined}
         >
+            {/* Resize handle */}
+            {expanded && (
+                <div
+                    onMouseDown={onResizeStart}
+                    className="absolute inset-x-0 -top-1 h-2 cursor-row-resize z-10 group"
+                >
+                    <div className="mx-auto mt-0.5 h-0.5 w-12 rounded-full bg-white/10 group-hover:bg-white/30 transition-colors" />
+                </div>
+            )}
             {/* Toggle bar */}
             <div className="flex h-9 items-center gap-3 border-t border-white/10 bg-[#0a0a0a] px-4">
                 <span className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground/70">
@@ -377,7 +420,7 @@ export function ReportsPanel() {
             {expanded && (
                 <div
                     ref={containerRef}
-                    className="h-[calc(100%-36px)] bg-[#0a0a0a]/98"
+                    className="h-[calc(100%-36px)] overflow-y-auto bg-[#0a0a0a]/98"
                 >
                     {mounted && <ResponsiveGridLayout
                         width={width || 1200}
@@ -391,6 +434,15 @@ export function ReportsPanel() {
                         containerPadding={[8, 4]}
                         isResizable={true}
                     >
+                        <div key="weather">
+                            <DashboardCard
+                                title="Live Weather"
+                                icon={ThermometerSun}
+                                accentColor="text-yellow-400"
+                            >
+                                <WeatherTab />
+                            </DashboardCard>
+                        </div>
                         <div key="news">
                             <DashboardCard
                                 title="News Feed"
@@ -452,7 +504,7 @@ export function ReportsPanel() {
                             <DashboardCard
                                 title="Intelligence"
                                 icon={FileText}
-                                accentColor="text-amber-400"
+                                accentColor="text-sky-400"
                             >
                                 <ReportsTab
                                     domains={domains}
@@ -518,9 +570,8 @@ function NewsFeedTab({
                 <div className="flex items-center gap-1 overflow-x-auto shrink-0">
                     <button
                         onClick={() => onDomainChange("")}
-                        className={`px-2 py-0.5 rounded text-[10px] font-medium transition-colors whitespace-nowrap ${
-                            !filter.domain ? "bg-sky-500/20 text-sky-400" : "text-muted-foreground hover:text-white hover:bg-white/5"
-                        }`}
+                        className={`px-2 py-0.5 rounded text-[10px] font-medium transition-colors whitespace-nowrap ${!filter.domain ? "bg-sky-500/20 text-sky-400" : "text-muted-foreground hover:text-white hover:bg-white/5"
+                            }`}
                     >
                         All
                     </button>
@@ -528,11 +579,10 @@ function NewsFeedTab({
                         <button
                             key={d.domain}
                             onClick={() => onDomainChange(filter.domain === d.domain ? "" : d.domain)}
-                            className={`px-2 py-0.5 rounded text-[10px] font-medium transition-colors whitespace-nowrap capitalize ${
-                                filter.domain === d.domain
+                            className={`px-2 py-0.5 rounded text-[10px] font-medium transition-colors whitespace-nowrap capitalize ${filter.domain === d.domain
                                     ? "bg-sky-500/20 text-sky-400"
                                     : "text-muted-foreground hover:text-white hover:bg-white/5"
-                            }`}
+                                }`}
                         >
                             {d.domain}
                             <span className="ml-0.5 text-[9px] opacity-60">{d.article_count}</span>
@@ -547,11 +597,10 @@ function NewsFeedTab({
                         <button
                             key={s}
                             onClick={() => onScoreChange(s)}
-                            className={`px-2 py-0.5 rounded text-[10px] font-medium transition-colors ${
-                                filter.min_score === s
+                            className={`px-2 py-0.5 rounded text-[10px] font-medium transition-colors ${filter.min_score === s
                                     ? "bg-amber-500/20 text-amber-400"
                                     : "text-muted-foreground hover:text-white hover:bg-white/5"
-                            }`}
+                                }`}
                         >
                             {s === "" ? "Any" : `${s}+`}
                         </button>
@@ -623,15 +672,14 @@ function ArticleRow({ article }: { article: NewsArticle }) {
                 </span>
                 <div className="h-12 w-0.5 bg-white/10 rounded-full overflow-hidden">
                     <div
-                        className={`w-full rounded-full ${
-                            article.importance_score >= 9
+                        className={`w-full rounded-full ${article.importance_score >= 9
                                 ? "bg-red-500"
                                 : article.importance_score >= 7
-                                ? "bg-orange-500"
-                                : article.importance_score >= 5
-                                ? "bg-yellow-500"
-                                : "bg-gray-600"
-                        }`}
+                                    ? "bg-orange-500"
+                                    : article.importance_score >= 5
+                                        ? "bg-yellow-500"
+                                        : "bg-gray-600"
+                            }`}
                         style={{ height: `${(article.importance_score / 10) * 100}%` }}
                     />
                 </div>
@@ -695,9 +743,8 @@ function TrendingTopicsTab({
                     <button
                         key={h}
                         onClick={() => onHoursChange(h)}
-                        className={`px-2 py-0.5 rounded text-[10px] font-medium transition-colors ${
-                            hours === h ? "bg-green-500/20 text-green-400" : "text-muted-foreground hover:text-white hover:bg-white/5"
-                        }`}
+                        className={`px-2 py-0.5 rounded text-[10px] font-medium transition-colors ${hours === h ? "bg-green-500/20 text-green-400" : "text-muted-foreground hover:text-white hover:bg-white/5"
+                            }`}
                     >
                         {h < 24 ? `${h}h` : `${h / 24}d`}
                     </button>
@@ -790,13 +837,12 @@ function SignalsTab({
                     <button
                         key={s}
                         onClick={() => onSeverityChange(s)}
-                        className={`px-2 py-0.5 rounded text-[10px] font-medium transition-colors ${
-                            severity === s
+                        className={`px-2 py-0.5 rounded text-[10px] font-medium transition-colors ${severity === s
                                 ? s === "high" ? "bg-red-500/20 text-red-400"
-                                : s === "medium" ? "bg-orange-500/20 text-orange-400"
-                                : "bg-white/10 text-white"
+                                    : s === "medium" ? "bg-orange-500/20 text-orange-400"
+                                        : "bg-white/10 text-white"
                                 : "text-muted-foreground hover:text-white hover:bg-white/5"
-                        }`}
+                            }`}
                     >
                         {s === "" ? "All" : s.charAt(0).toUpperCase() + s.slice(1)}
                     </button>
@@ -905,96 +951,93 @@ function ReportsTab({
     onSectionChange: (s: string) => void
 }) {
     return (
-        <div className="flex flex-1 min-w-0">
-            {/* Domain sidebar */}
-            <div className="flex w-36 shrink-0 flex-col gap-1 border-r border-white/10 p-2 overflow-y-auto">
+        <div className="flex flex-col flex-1 min-w-0 min-h-0">
+            {/* Domain pills row */}
+            <div className="flex shrink-0 items-center gap-1.5 border-b border-white/[0.06] px-2 py-1 overflow-x-auto">
                 {domainsLoading ? (
-                    <div className="flex items-center justify-center py-4">
-                        <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-                    </div>
+                    <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
                 ) : (
                     domains.map((d) => (
                         <button
                             key={d.domain}
                             onClick={() => onSelectDomain(d.domain)}
-                            className={`flex items-center gap-2 rounded-md px-3 py-2 text-left text-xs transition-colors ${
-                                activeDomain === d.domain
-                                    ? "bg-amber-500/10 text-amber-400"
+                            className={`shrink-0 rounded-full px-2.5 py-0.5 text-[10px] font-medium capitalize transition-colors ${activeDomain === d.domain
+                                    ? "bg-sky-500/15 text-sky-400 ring-1 ring-sky-500/30"
                                     : "text-muted-foreground hover:bg-white/5 hover:text-white"
-                            }`}
+                                }`}
                         >
-                            <div>
-                                <div className="font-medium capitalize">{d.domain}</div>
-                                {d.generated_at && (
-                                    <div className="text-[10px] text-muted-foreground">
-                                        {new Date(d.generated_at).toLocaleDateString()}
-                                    </div>
-                                )}
-                            </div>
+                            {d.domain}
                         </button>
                     ))
                 )}
             </div>
 
-            {/* Report content */}
-            <div className="flex flex-1 flex-col min-w-0">
-                {report && !loading && (
-                    <div className="flex shrink-0 gap-0.5 border-b border-white/10 px-3 py-1.5 overflow-x-auto">
-                        {reportSections.map((s) => (
-                            <Button
-                                key={s.id}
-                                variant={activeSection === s.id ? "secondary" : "ghost"}
-                                size="sm"
-                                onClick={() => onSectionChange(s.id)}
-                                className="h-7 gap-1.5 text-[11px] shrink-0"
-                            >
-                                <s.icon className="h-3 w-3" />
-                                {s.label}
-                            </Button>
-                        ))}
-                    </div>
-                )}
-
-                <div className="flex-1 overflow-y-auto p-4">
-                    {loading ? (
-                        <div className="flex items-center justify-center py-8">
-                            <Loader2 className="h-5 w-5 animate-spin text-amber-400" />
-                            <span className="ml-2 text-sm text-muted-foreground">Loading report…</span>
-                        </div>
-                    ) : !report ? (
-                        <p className="py-8 text-center text-sm text-muted-foreground">
-                            Select a domain to view its intelligence report
-                        </p>
-                    ) : (
-                        <ReportContent report={report} section={activeSection} />
-                    )}
+            {/* Section tabs row */}
+            {report && !loading && (
+                <div className="flex shrink-0 items-center gap-1 border-b border-white/[0.06] px-2 py-1 overflow-x-auto">
+                    {reportSections.map((s) => (
+                        <button
+                            key={s.id}
+                            onClick={() => onSectionChange(s.id)}
+                            className={`flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium transition-colors ${activeSection === s.id
+                                    ? "bg-white/10 text-white"
+                                    : "text-muted-foreground hover:bg-white/5 hover:text-white/70"
+                                }`}
+                        >
+                            <s.icon className="h-2.5 w-2.5" />
+                            {s.label}
+                        </button>
+                    ))}
                 </div>
+            )}
+
+            {/* Content */}
+            <div className="flex-1 overflow-y-auto scrollbar-thin p-2.5">
+                {loading ? (
+                    <div className="flex items-center justify-center py-6">
+                        <Loader2 className="h-4 w-4 animate-spin text-sky-400" />
+                        <span className="ml-2 text-xs text-muted-foreground">Loading report…</span>
+                    </div>
+                ) : !report ? (
+                    <p className="py-6 text-center text-[11px] text-muted-foreground">
+                        Select a domain above
+                    </p>
+                ) : (
+                    <ReportContent report={report} section={activeSection} />
+                )}
             </div>
         </div>
     )
 }
 
 function ReportContent({ report, section }: { report: Report; section: string }) {
+    const sectionHeader = (icon: React.ElementType, label: string, count?: number) => {
+        const I = icon
+        return (
+            <h3 className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-sky-400 mb-2">
+                <I className="h-3 w-3" /> {label}{count != null ? ` (${count})` : ""}
+            </h3>
+        )
+    }
+
     switch (section) {
         case "summary":
             return (
-                <div className="max-w-4xl space-y-4">
+                <div className="space-y-2.5">
                     <div>
-                        <h3 className="mb-2 text-sm font-semibold text-amber-400 flex items-center gap-2">
-                            <FileText className="h-4 w-4" /> Executive Summary
-                        </h3>
-                        <p className="text-xs leading-relaxed text-gray-300">{report.executive_summary}</p>
+                        {sectionHeader(FileText, "Executive Summary")}
+                        <p className="text-[11px] leading-relaxed text-gray-300">{report.executive_summary}</p>
                     </div>
                     {report.inference?.executive_summary && (
-                        <div className="rounded-lg border border-purple-500/20 bg-purple-950/10 p-3">
-                            <h4 className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-purple-400 flex items-center gap-1.5">
-                                <Shield className="h-3 w-3" /> Intelligence Assessment
+                        <div className="rounded border border-sky-500/15 bg-sky-950/10 p-2">
+                            <h4 className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-sky-300 flex items-center gap-1">
+                                <Shield className="h-2.5 w-2.5" /> Intelligence Assessment
                             </h4>
-                            <p className="text-xs leading-relaxed text-gray-300">{report.inference.executive_summary}</p>
+                            <p className="text-[11px] leading-relaxed text-gray-300">{report.inference.executive_summary}</p>
                         </div>
                     )}
-                    <div className="flex gap-3 text-[10px] text-muted-foreground">
-                        <span>Domain: <span className="capitalize text-amber-400">{report.domain}</span></span>
+                    <div className="flex gap-3 text-[9px] text-muted-foreground pt-1">
+                        <span>Domain: <span className="capitalize text-sky-400">{report.domain}</span></span>
                         <span>Range: {report.date_range}</span>
                         <span>Generated: {new Date(report.generated_at).toLocaleString()}</span>
                     </div>
@@ -1004,26 +1047,20 @@ function ReportContent({ report, section }: { report: Report; section: string })
         case "developments": {
             const developments = report.key_developments ?? []
             return (
-                <div className="max-w-4xl space-y-3">
-                    <h3 className="text-sm font-semibold text-amber-400 flex items-center gap-2">
-                        <Zap className="h-4 w-4" /> Key Developments ({developments.length})
-                    </h3>
+                <div className="space-y-1.5">
+                    {sectionHeader(Zap, "Key Developments", developments.length)}
                     {developments.length === 0 ? (
-                        <p className="text-xs text-muted-foreground">No key developments available for this report.</p>
+                        <p className="text-[11px] text-muted-foreground">No key developments available.</p>
                     ) : developments.map((d, i) => (
-                        <div key={i} className="rounded-lg border border-white/5 bg-white/[0.02] p-3">
-                            <div className="flex items-start justify-between gap-2 mb-1.5">
-                                <h4 className="text-xs font-medium text-white">{d.title}</h4>
-                                <Badge variant="outline" className="shrink-0 border-white/10 text-[10px] text-muted-foreground">
-                                    {d.date}
-                                </Badge>
+                        <div key={i} className="rounded border border-white/[0.06] bg-white/[0.02] px-2.5 py-1.5">
+                            <div className="flex items-start justify-between gap-2 mb-0.5">
+                                <span className="text-[11px] font-medium text-white leading-tight">{d.title}</span>
+                                <span className="shrink-0 text-[9px] text-muted-foreground">{d.date}</span>
                             </div>
-                            <p className="text-[11px] leading-relaxed text-gray-400 mb-2">{d.details}</p>
+                            <p className="text-[10px] leading-snug text-gray-400 mb-1">{d.details}</p>
                             <div className="flex flex-wrap gap-1">
                                 {d.entities.map((e) => (
-                                    <Badge key={e} variant="secondary" className="bg-sky-950/30 text-[10px] text-sky-400">
-                                        {e}
-                                    </Badge>
+                                    <span key={e} className="rounded bg-sky-950/40 px-1.5 py-px text-[9px] text-sky-400">{e}</span>
                                 ))}
                             </div>
                         </div>
@@ -1035,21 +1072,19 @@ function ReportContent({ report, section }: { report: Report; section: string })
         case "actors": {
             const actors = report.key_actors ?? []
             return (
-                <div className="max-w-4xl space-y-3">
-                    <h3 className="text-sm font-semibold text-amber-400 flex items-center gap-2">
-                        <Users className="h-4 w-4" /> Key Actors ({actors.length})
-                    </h3>
+                <div className="space-y-1.5">
+                    {sectionHeader(Users, "Key Actors", actors.length)}
                     {actors.length === 0 ? (
-                        <p className="text-xs text-muted-foreground">No key actors available for this report.</p>
+                        <p className="text-[11px] text-muted-foreground">No key actors available.</p>
                     ) : (
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                        <div className="grid grid-cols-2 gap-1.5">
                             {actors.map((a, i) => (
-                                <div key={i} className="rounded-lg border border-white/5 bg-white/[0.02] p-3">
-                                    <div className="flex items-center gap-2 mb-1">
-                                        <span className="text-xs font-medium text-white">{a.name}</span>
-                                        <Badge variant="secondary" className="bg-white/5 text-[10px]">{a.type}</Badge>
+                                <div key={i} className="rounded border border-white/[0.06] bg-white/[0.02] px-2 py-1.5">
+                                    <div className="flex items-center gap-1.5 mb-0.5">
+                                        <span className="text-[11px] font-medium text-white">{a.name}</span>
+                                        <span className="rounded bg-white/5 px-1 py-px text-[9px] text-muted-foreground">{a.type}</span>
                                     </div>
-                                    <p className="text-[11px] text-gray-400 leading-relaxed">{a.role}</p>
+                                    <p className="text-[10px] text-gray-400 leading-snug">{a.role}</p>
                                 </div>
                             ))}
                         </div>
@@ -1061,22 +1096,18 @@ function ReportContent({ report, section }: { report: Report; section: string })
         case "relationships": {
             const relationships = report.critical_relationships ?? []
             return (
-                <div className="max-w-4xl space-y-3">
-                    <h3 className="text-sm font-semibold text-amber-400 flex items-center gap-2">
-                        <Link2 className="h-4 w-4" /> Critical Relationships ({relationships.length})
-                    </h3>
+                <div className="space-y-1.5">
+                    {sectionHeader(Link2, "Critical Relationships", relationships.length)}
                     {relationships.length === 0 ? (
-                        <p className="text-xs text-muted-foreground">No critical relationships available for this report.</p>
+                        <p className="text-[11px] text-muted-foreground">No critical relationships available.</p>
                     ) : relationships.map((r, i) => (
-                        <div key={i} className="rounded-lg border border-white/5 bg-white/[0.02] p-3">
-                            <div className="flex items-center gap-2 mb-1.5 text-xs">
+                        <div key={i} className="rounded border border-white/[0.06] bg-white/[0.02] px-2.5 py-1.5">
+                            <div className="flex items-center gap-1.5 mb-0.5 text-[11px]">
                                 <span className="font-medium text-sky-400">{r.source}</span>
-                                <Badge variant="outline" className="border-amber-500/30 text-[10px] text-amber-400">
-                                    {r.relation_type}
-                                </Badge>
+                                <span className="rounded bg-white/5 px-1 py-px text-[9px] text-muted-foreground">{r.relation_type}</span>
                                 <span className="font-medium text-sky-400">{r.target}</span>
                             </div>
-                            <p className="text-[11px] text-gray-400 leading-relaxed">{r.analysis}</p>
+                            <p className="text-[10px] text-gray-400 leading-snug">{r.analysis}</p>
                         </div>
                     ))}
                 </div>
@@ -1085,49 +1116,41 @@ function ReportContent({ report, section }: { report: Report; section: string })
 
         case "trends":
             return (
-                <div className="max-w-4xl space-y-4">
-                    <h3 className="text-sm font-semibold text-amber-400 flex items-center gap-2">
-                        <TrendingUp className="h-4 w-4" /> Trends Analysis
-                    </h3>
+                <div className="space-y-2">
+                    {sectionHeader(TrendingUp, "Trends Analysis")}
                     {report.trends ? (
-                        <p className="text-xs leading-relaxed text-gray-300">{report.trends}</p>
+                        <p className="text-[11px] leading-relaxed text-gray-300">{report.trends}</p>
                     ) : (
-                        <p className="text-xs text-muted-foreground">No trends analysis available for this report.</p>
+                        <p className="text-[11px] text-muted-foreground">No trends analysis available.</p>
                     )}
                 </div>
             )
 
         case "inference":
             return (
-                <div className="max-w-4xl space-y-5">
+                <div className="space-y-3">
                     {report.inference?.causal_chains?.length > 0 && (
                         <div>
-                            <h3 className="mb-3 text-sm font-semibold text-purple-400 flex items-center gap-2">
-                                <Zap className="h-4 w-4" /> Causal Chains
-                            </h3>
-                            <div className="space-y-3">
+                            <h4 className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-sky-300 mb-1.5">
+                                <Zap className="h-2.5 w-2.5" /> Causal Chains
+                            </h4>
+                            <div className="space-y-1.5">
                                 {report.inference.causal_chains.map((c, i) => (
-                                    <div key={i} className="rounded-lg border border-purple-500/15 bg-purple-950/5 p-3">
-                                        <div className="flex flex-wrap items-center gap-1 mb-2">
+                                    <div key={i} className="rounded border border-sky-500/10 bg-sky-950/5 px-2 py-1.5">
+                                        <div className="flex flex-wrap items-center gap-1 mb-1">
                                             {c.chain.map((step, j) => (
-                                                <span key={j} className="flex items-center gap-1">
-                                                    <Badge variant="secondary" className="bg-purple-950/30 text-[10px] text-purple-300">
-                                                        {step.entity}
-                                                    </Badge>
+                                                <span key={j} className="flex items-center gap-0.5">
+                                                    <span className="rounded bg-sky-950/40 px-1 py-px text-[9px] text-sky-300">{step.entity}</span>
                                                     {step.relation && j < c.chain.length - 1 && (
-                                                        <span className="text-[10px] text-purple-500">→ {step.relation} →</span>
+                                                        <span className="text-[9px] text-sky-600">\u2192 {step.relation} \u2192</span>
                                                     )}
                                                 </span>
                                             ))}
                                         </div>
-                                        <p className="text-[11px] text-gray-400 leading-relaxed mb-1.5">{c.narrative}</p>
-                                        <div className="flex items-center gap-2">
-                                            <Badge variant="outline" className="border-amber-500/30 text-[10px] text-amber-400">
-                                                Score: {(c.score * 100).toFixed(0)}%
-                                            </Badge>
-                                            <span className="text-[10px] text-muted-foreground">
-                                                {c.source_articles.length} source articles
-                                            </span>
+                                        <p className="text-[10px] text-gray-400 leading-snug mb-1">{c.narrative}</p>
+                                        <div className="flex items-center gap-2 text-[9px] text-muted-foreground">
+                                            <span className="text-sky-400">Score: {(c.score * 100).toFixed(0)}%</span>
+                                            <span>{c.source_articles.length} sources</span>
                                         </div>
                                     </div>
                                 ))}
@@ -1137,27 +1160,23 @@ function ReportContent({ report, section }: { report: Report; section: string })
 
                     {report.inference?.impact_propagations?.length > 0 && (
                         <div>
-                            <h3 className="mb-3 text-sm font-semibold text-red-400 flex items-center gap-2">
-                                <AlertTriangle className="h-4 w-4" /> Impact Propagations
-                            </h3>
-                            <div className="space-y-3">
+                            <h4 className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-red-400 mb-1.5">
+                                <AlertTriangle className="h-2.5 w-2.5" /> Impact Propagations
+                            </h4>
+                            <div className="space-y-1.5">
                                 {report.inference.impact_propagations.map((ip, i) => (
-                                    <div key={i} className="rounded-lg border border-red-500/15 bg-red-950/5 p-3">
-                                        <div className="flex items-center gap-2 mb-2">
-                                            <span className="text-xs font-medium text-white">{ip.trigger_event}</span>
-                                            <Badge variant="outline" className="border-red-500/30 text-[10px] text-red-400">
-                                                {ip.event_status}
-                                            </Badge>
-                                            <Badge variant="outline" className="border-white/10 text-[10px] text-muted-foreground">
-                                                {ip.event_date}
-                                            </Badge>
+                                    <div key={i} className="rounded border border-red-500/10 bg-red-950/5 px-2 py-1.5">
+                                        <div className="flex items-center gap-1.5 mb-1">
+                                            <span className="text-[11px] font-medium text-white">{ip.trigger_event}</span>
+                                            <span className="rounded bg-red-950/30 px-1 py-px text-[9px] text-red-400">{ip.event_status}</span>
+                                            <span className="text-[9px] text-muted-foreground">{ip.event_date}</span>
                                         </div>
-                                        <p className="text-[11px] text-gray-400 leading-relaxed mb-2">{ip.narrative}</p>
+                                        <p className="text-[10px] text-gray-400 leading-snug mb-1">{ip.narrative}</p>
                                         <div className="flex flex-wrap gap-1">
                                             {ip.affected.map((a, j) => (
-                                                <Badge key={j} variant="secondary" className="bg-red-950/20 text-[10px] text-red-300">
+                                                <span key={j} className="rounded bg-red-950/20 px-1 py-px text-[9px] text-red-300">
                                                     {a.name} ({a.via_relation})
-                                                </Badge>
+                                                </span>
                                             ))}
                                         </div>
                                     </div>
@@ -1168,25 +1187,23 @@ function ReportContent({ report, section }: { report: Report; section: string })
 
                     {report.inference?.weak_links?.length > 0 && (
                         <div>
-                            <h3 className="mb-3 text-sm font-semibold text-amber-400 flex items-center gap-2">
-                                <AlertTriangle className="h-4 w-4" /> Weak Links & Risk Nodes
-                            </h3>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                            <h4 className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-orange-400 mb-1.5">
+                                <AlertTriangle className="h-2.5 w-2.5" /> Weak Links & Risk Nodes
+                            </h4>
+                            <div className="grid grid-cols-2 gap-1.5">
                                 {report.inference.weak_links.map((w, i) => (
-                                    <div key={i} className="rounded-lg border border-amber-500/15 bg-amber-950/5 p-3">
-                                        <div className="flex items-center gap-2 mb-1.5">
-                                            <span className="text-xs font-medium text-white">{w.entity}</span>
-                                            <Badge variant="secondary" className="bg-white/5 text-[10px]">{w.type}</Badge>
-                                            <Badge variant="outline" className="border-amber-500/30 text-[10px] text-amber-400">
-                                                {w.connection_count} connections
-                                            </Badge>
+                                    <div key={i} className="rounded border border-white/[0.06] bg-white/[0.02] px-2 py-1.5">
+                                        <div className="flex items-center gap-1.5 mb-0.5">
+                                            <span className="text-[11px] font-medium text-white">{w.entity}</span>
+                                            <span className="rounded bg-white/5 px-1 py-px text-[9px] text-muted-foreground">{w.type}</span>
+                                            <span className="text-[9px] text-orange-400">{w.connection_count} conn.</span>
                                         </div>
-                                        <div className="flex flex-wrap gap-1 mb-1.5">
+                                        <div className="flex flex-wrap gap-0.5 mb-0.5">
                                             {w.domains_bridged.map((d) => (
-                                                <Badge key={d} variant="secondary" className="bg-white/5 text-[9px] capitalize">{d}</Badge>
+                                                <span key={d} className="rounded bg-white/5 px-1 py-px text-[8px] capitalize text-muted-foreground">{d}</span>
                                             ))}
                                         </div>
-                                        <p className="text-[11px] text-gray-400 leading-relaxed">{w.risk_narrative}</p>
+                                        <p className="text-[10px] text-gray-400 leading-snug">{w.risk_narrative}</p>
                                     </div>
                                 ))}
                             </div>
@@ -1197,27 +1214,21 @@ function ReportContent({ report, section }: { report: Report; section: string })
 
         case "sources":
             return (
-                <div className="max-w-4xl space-y-3">
-                    <h3 className="text-sm font-semibold text-amber-400 flex items-center gap-2">
-                        <ExternalLink className="h-4 w-4" /> Sources ({report.sources.length})
-                    </h3>
-                    <div className="space-y-1.5">
-                        {report.sources.map((s, i) => (
-                            <div key={i} className="flex items-start gap-2 py-1.5 border-b border-white/5 last:border-0">
-                                <a
-                                    href={s.url}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="flex-1 text-xs text-sky-300 hover:underline"
-                                >
-                                    {s.title}
-                                </a>
-                                <Badge variant="outline" className="shrink-0 border-white/10 text-[10px] text-muted-foreground">
-                                    {s.source}
-                                </Badge>
-                            </div>
-                        ))}
-                    </div>
+                <div className="space-y-1">
+                    {sectionHeader(ExternalLink, "Sources", report.sources.length)}
+                    {report.sources.map((s, i) => (
+                        <div key={i} className="flex items-center gap-2 py-1 border-b border-white/[0.04] last:border-0">
+                            <a
+                                href={s.url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="flex-1 text-[11px] text-sky-300 hover:underline truncate"
+                            >
+                                {s.title}
+                            </a>
+                            <span className="shrink-0 text-[9px] text-muted-foreground">{s.source}</span>
+                        </div>
+                    ))}
                 </div>
             )
 

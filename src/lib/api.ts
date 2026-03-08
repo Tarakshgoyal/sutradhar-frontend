@@ -359,3 +359,118 @@ export async function fetchEntityTimeline(
   if (!resp.ok) throw new Error(`Timeline API error: ${resp.status}`)
   return resp.json()
 }
+
+// --- Weather ---
+
+export interface WeatherCity {
+  name: string
+  lat: number
+  lon: number
+  zone: string
+}
+
+export interface WeatherObservation {
+  city: string
+  lat: number
+  lon: number
+  date: string
+  temperature_max: number
+  temperature_min: number
+  temperature_mean: number
+  precipitation_sum: number
+  humidity_mean: number
+  wind_speed_max: number
+  weather_code: number
+  temp_max_zscore: number | null
+  precip_zscore: number | null
+  active_anomalies: any[]
+}
+
+export async function fetchWeatherCities(): Promise<{ cities: WeatherCity[] }> {
+  const resp = await fetch(`${API_URL}/weather/cities`)
+  if (!resp.ok) throw new Error(`Weather cities API error: ${resp.status}`)
+  return resp.json()
+}
+
+export async function fetchCurrentWeather(): Promise<{ observations: WeatherObservation[] }> {
+  const resp = await fetch(`${API_URL}/weather/current`)
+  if (!resp.ok) throw new Error(`Current weather API error: ${resp.status}`)
+  return resp.json()
+}
+
+export interface WeatherTrendPoint {
+  date: string
+  value: number
+  normal: number | null
+  z_score: number | null
+}
+
+export interface WeatherTrendsResponse {
+  city: string
+  variable: string
+  period: string
+  data: WeatherTrendPoint[]
+  trend: number | null
+}
+
+export interface WeatherAnomaly {
+  id: number
+  city: string
+  type: string
+  severity: string
+  start_date: string
+  end_date: string
+  peak_value: number
+  z_score: number | null
+  description: string | null
+  detected_at: string
+}
+
+export interface WeatherAnomaliesResponse {
+  anomalies: WeatherAnomaly[]
+  count: number
+}
+
+export interface ClimateTrendsResponse {
+  city: string
+  variable: string
+  trend: number | null
+  annual_means: { year: number; mean: number }[]
+  extreme_days: { year: number; count: number }[]
+}
+
+export async function fetchWeatherTrends(city: string, variable = "temperature_max", period = "30d"): Promise<WeatherTrendsResponse> {
+  const qs = new URLSearchParams({ city, variable, period })
+  const resp = await fetch(`${API_URL}/weather/trends?${qs}`)
+  if (!resp.ok) throw new Error(`Weather trends API error: ${resp.status}`)
+  return resp.json()
+}
+
+export async function fetchWeatherAnomalies(params?: { anomaly_type?: string; severity?: string; city?: string; days?: number }): Promise<WeatherAnomaliesResponse> {
+  const qs = new URLSearchParams()
+  if (params?.anomaly_type) qs.set("anomaly_type", params.anomaly_type)
+  if (params?.severity) qs.set("severity", params.severity)
+  if (params?.city) qs.set("city", params.city)
+  if (params?.days !== undefined) qs.set("days", String(params.days))
+
+  const resp = await fetch(`${API_URL}/weather/anomalies?${qs}`)
+  if (!resp.ok) throw new Error(`Weather anomalies API error: ${resp.status}`)
+  return resp.json()
+}
+
+export async function fetchWeatherMonsoon(year?: number, city?: string): Promise<{ year: number; analyses: unknown[]; count: number }> {
+  const qs = new URLSearchParams()
+  if (year !== undefined) qs.set("year", String(year))
+  if (city) qs.set("city", city)
+
+  const resp = await fetch(`${API_URL}/weather/monsoon?${qs}`)
+  if (!resp.ok) throw new Error(`Weather monsoon API error: ${resp.status}`)
+  return resp.json()
+}
+
+export async function fetchClimateTrends(city: string, variable = "temperature_max"): Promise<ClimateTrendsResponse> {
+  const qs = new URLSearchParams({ city, variable })
+  const resp = await fetch(`${API_URL}/weather/climate-trends?${qs}`)
+  if (!resp.ok) throw new Error(`Climate trends API error: ${resp.status}`)
+  return resp.json()
+}
