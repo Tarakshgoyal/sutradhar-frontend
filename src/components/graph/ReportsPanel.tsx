@@ -158,7 +158,7 @@ function DashboardCard({
                 <GripVertical className="ml-auto h-3.5 w-3.5 text-white/20" />
             </div>
             {/* Card Content */}
-            <div className="flex-1 overflow-hidden">
+            <div className="flex-1 overflow-y-auto scrollbar-thin">
                 {children}
             </div>
         </div>

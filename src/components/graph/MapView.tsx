@@ -6,7 +6,7 @@ import {
   Polyline,
   Tooltip,
   CircleMarker,
-  useMap,
+  // useMap,
   useMapEvent,
 } from "react-leaflet"
 import { DomEvent } from "leaflet"
@@ -170,19 +170,19 @@ function DeselectHandler({ onDeselect, skipRef }: { onDeselect: () => void; skip
   return null
 }
 
-function MapFlyHandler({ selectedCenter }: { selectedCenter: [number, number] | null }) {
-  const map = useMap()
-  const prevCenter = useRef<[number, number] | null>(null)
-  useEffect(() => {
-    if (selectedCenter) {
-      prevCenter.current = selectedCenter
-      map.flyTo(selectedCenter, 5, { duration: 1.2 })
-    } else if (prevCenter.current) {
-      // Was selected, now deselected → zoom back out
-      prevCenter.current = null
-      map.flyTo([20, 0], 2, { duration: 1.2 })
-    }
-  }, [selectedCenter, map])
+function MapFlyHandler({ selectedCenter: _selectedCenter }: { selectedCenter: [number, number] | null }) {
+  // Zoom temporarily disabled
+  // const map = useMap()
+  // const prevCenter = useRef<[number, number] | null>(null)
+  // useEffect(() => {
+  //   if (_selectedCenter) {
+  //     prevCenter.current = _selectedCenter
+  //     map.flyTo(_selectedCenter, 5, { duration: 1.2 })
+  //   } else if (prevCenter.current) {
+  //     prevCenter.current = null
+  //     map.flyTo([20, 0], 2, { duration: 1.2 })
+  //   }
+  // }, [_selectedCenter, map])
   return null
 }
 
@@ -253,6 +253,27 @@ export function MapView({ nodes, edges, selectedNode, onSelectNode }: MapViewPro
     return arcs
   }, [countryEdges, nodeIdToName, countryCentroids])
 
+  // Count connections per country for heat-map coloring
+  const countryConnectionCount = useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const edge of countryEdges) {
+      const fromName = nodeIdToName.get(edge.from)?.toLowerCase()
+      const toName = nodeIdToName.get(edge.to)?.toLowerCase()
+      if (fromName) counts.set(fromName, (counts.get(fromName) || 0) + 1)
+      if (toName) counts.set(toName, (counts.get(toName) || 0) + 1)
+    }
+    return counts
+  }, [countryEdges, nodeIdToName])
+
+  const getCountryColor = useCallback((countryKey: string) => {
+    const count = countryConnectionCount.get(countryKey) || 0
+    if (count >= 10) return "#ef4444"  // red — very high
+    if (count >= 6)  return "#f97316"  // orange — high
+    if (count >= 3)  return "#eab308"  // yellow — moderate
+    if (count >= 1)  return "#66bb6a"  // green — low
+    return "#66bb6a"                   // green — no connections
+  }, [countryConnectionCount])
+
   const selectedCountryName = selectedNode?.entityType === "Country"
     ? selectedNode.fullLabel.toLowerCase()
     : null
@@ -322,13 +343,14 @@ export function MapView({ nodes, edges, selectedNode, onSelectNode }: MapViewPro
         const geo = geoByCountry.get(key)
         if (!geo) return null
         const isSelected = selectedCountryName === key
+        const countryColor = getCountryColor(key)
         return (
           <GeoJSON
-            key={key + (isSelected ? "-sel" : "")}
+            key={key + (isSelected ? "-sel" : "") + countryColor}
             data={geo}
             style={() => isSelected
-              ? { fillColor: "#66bb6a", fillOpacity: 0.4, color: "#66bb6a", weight: 3, opacity: 1 }
-              : { fillColor: "#4fc3f7", fillOpacity: 0.08, color: "#4fc3f7", weight: 1, opacity: 0.35 }
+              ? { fillColor: countryColor, fillOpacity: 0.45, color: countryColor, weight: 3, opacity: 1 }
+              : { fillColor: countryColor, fillOpacity: 0.18, color: countryColor, weight: 1, opacity: 0.5 }
             }
             eventHandlers={{
               click: (e: LeafletMouseEvent) => {
@@ -343,8 +365,10 @@ export function MapView({ nodes, edges, selectedNode, onSelectNode }: MapViewPro
         )
       })}
 
-      {/* Connection arcs */}
-      {connectionArcs.map((arc, i) => (
+      {/* Connection arcs — only shown when a country is selected */}
+      {selectedCountryName && connectionArcs
+        .filter((arc) => arc.fromName.toLowerCase() === selectedCountryName || arc.toName.toLowerCase() === selectedCountryName)
+        .map((arc, i) => (
         <React.Fragment key={i}>
           <Polyline
             positions={arc.points}
