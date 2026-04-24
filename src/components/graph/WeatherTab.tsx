@@ -1,14 +1,16 @@
-import { useEffect, useState, useCallback, useMemo } from "react"
+import { useEffect, useState, useMemo, useCallback } from "react"
 import { Badge } from "@/components/ui/badge"
 import {
     fetchCurrentWeather,
     fetchWeatherAnomalies,
     fetchWeatherTrends,
     fetchClimateTrends,
+    fetchLiveWeather,
     type WeatherObservation,
     type WeatherAnomaly,
     type WeatherTrendPoint,
     type ClimateTrendsResponse,
+    type LiveWeatherObservation,
 } from "@/lib/api"
 import {
     Loader2,
@@ -28,7 +30,15 @@ import {
     Snowflake,
     Eye,
     MapPin,
+    Radio,
+    RefreshCw,
+    Thermometer,
+    Gauge,
 } from "lucide-react"
+
+function owmIconUrl(icon: string | null) {
+    return icon ? `https://openweathermap.org/img/wn/${icon}@2x.png` : null
+}
 
 /* ── Weather code to icon/label mapping ── */
 
@@ -141,12 +151,60 @@ function Sparkline({ data, width = 180, height = 40, color = "#60a5fa" }: {
 type SortMode = "temp" | "rain" | "wind" | "name"
 
 export function WeatherTab() {
+    // Feed mode: historical (Open-Meteo DB) vs live (OpenWeatherMap)
+    const [feedMode, setFeedMode] = useState<"historical" | "live">("historical")
+
+    // Historical state
     const [observations, setObservations] = useState<WeatherObservation[]>([])
     const [anomalies, setAnomalies] = useState<WeatherAnomaly[]>([])
     const [loading, setLoading] = useState(true)
     const [selectedCity, setSelectedCity] = useState<string | null>(null)
     const [sortMode, setSortMode] = useState<SortMode>("temp")
     const [zoneFilter, setZoneFilter] = useState<string>("")
+
+    // Live weather state
+    const [liveObs, setLiveObs] = useState<LiveWeatherObservation[]>([])
+    const [liveLoading, setLiveLoading] = useState(false)
+    const [liveError, setLiveError] = useState<string | null>(null)
+    const [selectedLiveCity, setSelectedLiveCity] = useState<LiveWeatherObservation | null>(null)
+    const [liveLastFetched, setLiveLastFetched] = useState<Date | null>(null)
+
+    const loadLiveWeather = useCallback(async () => {
+        setLiveLoading(true)
+        setLiveError(null)
+        try {
+            const data = await fetchLiveWeather()
+            setLiveObs(data.observations)
+            setLiveLastFetched(new Date())
+        } catch (err: unknown) {
+            const msg = err instanceof Error ? err.message : "Failed to load live weather"
+            setLiveError(msg)
+        } finally {
+            setLiveLoading(false)
+        }
+    }, [])
+
+    // Fetch live weather eagerly on mount — data is stored and available
+    // in BOTH live and historical views (historical cards use it for current conditions)
+    useEffect(() => {
+        loadLiveWeather()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [])
+
+    // Re-fetch if user explicitly switches to live view and data is stale (>10 min)
+    useEffect(() => {
+        if (feedMode === "live" && liveLastFetched) {
+            const ageMs = Date.now() - liveLastFetched.getTime()
+            if (ageMs > 10 * 60 * 1000) loadLiveWeather()
+        }
+    }, [feedMode, liveLastFetched, loadLiveWeather])
+
+    // Lookup map: city name → live observation (used in historical cards)
+    const liveByCity = useMemo(() => {
+        const m = new Map<string, LiveWeatherObservation>()
+        liveObs.forEach(o => m.set(o.city, o))
+        return m
+    }, [liveObs])
 
     useEffect(() => {
         let mounted = true
@@ -233,8 +291,134 @@ export function WeatherTab() {
         )
     }
 
+    // ── Live weather view ──────────────────────────────────────────────────────
+    if (feedMode === "live") {
+        if (selectedLiveCity) {
+            const o = selectedLiveCity
+            const iconUrl = owmIconUrl(o.weather_icon)
+            return (
+                <div className="flex flex-1 flex-col min-w-0">
+                    <div className="shrink-0 flex items-center gap-2 border-b border-white/5 px-3 py-1.5">
+                        <button onClick={() => setSelectedLiveCity(null)} className="flex items-center gap-1 text-xs text-muted-foreground hover:text-white transition-colors">
+                            <ArrowLeft className="h-3.5 w-3.5" /> Back
+                        </button>
+                        <span className="text-xs font-semibold text-white ml-1">{o.city}</span>
+                        <button onClick={() => setFeedMode("historical")} className="ml-auto text-[10px] text-sky-400 hover:text-sky-300">Historical</button>
+                    </div>
+                    <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                        <div className="flex items-center gap-4">
+                            {iconUrl && <img src={iconUrl} alt={o.weather_description ?? ""} className="w-16 h-16" />}
+                            <div>
+                                <div className="text-3xl font-bold text-white">{o.temperature != null ? `${o.temperature.toFixed(1)}°C` : "—"}</div>
+                                <div className="text-sm text-muted-foreground capitalize">{o.weather_description ?? o.weather_main ?? "—"}</div>
+                                {o.feels_like != null && <div className="text-xs text-muted-foreground">Feels like {o.feels_like.toFixed(1)}°C</div>}
+                            </div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                            {[
+                                { icon: Droplets, label: "Humidity", value: o.humidity != null ? `${o.humidity}%` : "—", color: "text-blue-400" },
+                                { icon: Gauge, label: "Pressure", value: o.pressure != null ? `${o.pressure} hPa` : "—", color: "text-purple-400" },
+                                { icon: Wind, label: "Wind", value: o.wind_speed != null ? `${o.wind_speed} m/s` : "—", color: "text-cyan-400" },
+                                { icon: Wind, label: "Gusts", value: o.wind_gust != null ? `${o.wind_gust} m/s` : "—", color: "text-cyan-300" },
+                                { icon: Eye, label: "Visibility", value: o.visibility != null ? `${(o.visibility / 1000).toFixed(1)} km` : "—", color: "text-gray-400" },
+                                { icon: Cloud, label: "Cloudiness", value: o.cloudiness != null ? `${o.cloudiness}%` : "—", color: "text-gray-400" },
+                                { icon: CloudRain, label: "Rain 1h", value: o.rain_1h != null ? `${o.rain_1h} mm` : "—", color: "text-blue-400" },
+                                { icon: Snowflake, label: "Snow 1h", value: o.snow_1h != null ? `${o.snow_1h} mm` : "—", color: "text-sky-300" },
+                            ].map(({ icon: Icon, label, value, color }) => (
+                                <div key={label} className="flex items-center gap-2 bg-white/[0.03] rounded-lg px-3 py-2">
+                                    <Icon className={`h-4 w-4 shrink-0 ${color}`} />
+                                    <div>
+                                        <div className="text-[10px] text-muted-foreground">{label}</div>
+                                        <div className="text-xs font-semibold text-white">{value}</div>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                        {(o.sunrise || o.sunset) && (
+                            <div className="flex gap-4 text-xs text-muted-foreground">
+                                {o.sunrise && <span>🌅 Sunrise: {new Date(o.sunrise).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>}
+                                {o.sunset && <span>🌇 Sunset: {new Date(o.sunset).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>}
+                            </div>
+                        )}
+                        {o.observed_at && <div className="text-[10px] text-muted-foreground">Observed: {new Date(o.observed_at).toLocaleString()}</div>}
+                    </div>
+                </div>
+            )
+        }
+
+        return (
+            <div className="flex flex-1 flex-col min-w-0">
+                {/* Toggle bar */}
+                <div className="shrink-0 flex items-center gap-2 border-b border-white/5 px-3 py-1.5">
+                    <Radio className="h-3.5 w-3.5 text-sky-400" />
+                    <span className="text-xs font-medium text-sky-400">Live Feed</span>
+                    <button onClick={() => setFeedMode("historical")} className="ml-auto text-[10px] text-muted-foreground hover:text-white transition-colors">Historical</button>
+                    <button onClick={loadLiveWeather} disabled={liveLoading} className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-white transition-colors disabled:opacity-50">
+                        <RefreshCw className={`h-3 w-3 ${liveLoading ? "animate-spin" : ""}`} /> Refresh
+                    </button>
+                    {liveLastFetched && <span className="text-[10px] text-muted-foreground">{liveLastFetched.toLocaleTimeString()}</span>}
+                </div>
+                <div className="flex-1 overflow-y-auto">
+                    {liveLoading ? (
+                        <div className="flex items-center justify-center py-12">
+                            <Loader2 className="h-5 w-5 animate-spin text-sky-400" />
+                            <span className="ml-2 text-sm text-muted-foreground">Fetching live weather…</span>
+                        </div>
+                    ) : liveError ? (
+                        <div className="p-4 text-center space-y-2">
+                            <AlertTriangle className="h-8 w-8 text-orange-400 mx-auto" />
+                            <p className="text-sm text-orange-300">Live weather unavailable</p>
+                            <p className="text-xs text-muted-foreground">{liveError}</p>
+                            {liveError.includes("401") || liveError.includes("503") ? (
+                                <p className="text-xs text-muted-foreground">New API keys can take up to 2 hours to activate.</p>
+                            ) : null}
+                        </div>
+                    ) : (
+                        <div className="grid grid-cols-1 divide-y divide-white/[0.04]">
+                            {liveObs.map(o => {
+                                const iconUrl = owmIconUrl(o.weather_icon)
+                                return (
+                                    <button
+                                        key={o.city}
+                                        onClick={() => setSelectedLiveCity(o)}
+                                        className="flex items-center gap-3 px-3 py-2.5 hover:bg-white/[0.03] transition-colors text-left w-full"
+                                    >
+                                        {iconUrl
+                                            ? <img src={iconUrl} alt="" className="w-8 h-8 shrink-0" />
+                                            : <Thermometer className="h-5 w-5 text-orange-400 shrink-0" />}
+                                        <div className="flex-1 min-w-0">
+                                            <div className="text-xs font-semibold text-white">{o.city}</div>
+                                            <div className="text-[10px] text-muted-foreground capitalize">{o.weather_description ?? o.weather_main ?? "—"}</div>
+                                        </div>
+                                        <div className="text-right shrink-0">
+                                            <div className="text-sm font-bold text-white">{o.temperature != null ? `${o.temperature.toFixed(1)}°C` : "—"}</div>
+                                            {o.humidity != null && <div className="text-[10px] text-blue-400">{o.humidity}% RH</div>}
+                                        </div>
+                                    </button>
+                                )
+                            })}
+                        </div>
+                    )}
+                </div>
+            </div>
+        )
+    }
+
+    // ── Historical view ────────────────────────────────────────────────────────
     return (
         <div className="flex flex-1 flex-col min-w-0">
+            {/* Feed toggle */}
+            <div className="shrink-0 flex items-center gap-2 border-b border-white/5 px-3 py-1.5">
+                <ThermometerSun className="h-3.5 w-3.5 text-orange-400" />
+                <span className="text-xs font-medium text-white/70">Historical</span>
+                <button
+                    onClick={() => setFeedMode("live")}
+                    className="ml-auto flex items-center gap-1 text-[10px] text-sky-400 hover:text-sky-300 transition-colors font-medium"
+                >
+                    <Radio className="h-3 w-3" /> Live Feed
+                </button>
+            </div>
+
             {/* Anomaly Alert Banner */}
             {anomalies.length > 0 && (
                 <div className="shrink-0 flex items-center gap-2 px-3 py-1.5 bg-red-950/30 border-b border-red-500/20">
@@ -337,6 +521,7 @@ export function WeatherTab() {
                         <CityWeatherCard
                             key={obs.city}
                             obs={obs}
+                            liveObs={liveByCity.get(obs.city)}
                             hasAnomaly={anomalies.some(a => a.city === obs.city)}
                             onClick={() => setSelectedCity(obs.city)}
                         />
@@ -349,13 +534,15 @@ export function WeatherTab() {
 
 /* ── City Card ── */
 
-function CityWeatherCard({ obs, hasAnomaly, onClick }: {
+function CityWeatherCard({ obs, liveObs, hasAnomaly, onClick }: {
     obs: WeatherObservation
+    liveObs?: LiveWeatherObservation
     hasAnomaly: boolean
     onClick: () => void
 }) {
     const weather = getWeatherInfo(obs.weather_code)
     const WeatherIcon = weather.icon
+    const liveIconUrl = liveObs ? owmIconUrl(liveObs.weather_icon) : null
 
     return (
         <button
@@ -372,50 +559,76 @@ function CityWeatherCard({ obs, hasAnomaly, onClick }: {
                     {hasAnomaly && <AlertTriangle className="h-2.5 w-2.5 text-red-400 shrink-0" />}
                 </div>
                 <div className="flex items-center gap-1">
-                    <WeatherIcon className={`h-4 w-4 ${weather.color}`} />
-                    <span className={`text-[9px] ${weather.color}`}>{weather.label}</span>
+                    {liveIconUrl
+                        ? <img src={liveIconUrl} alt="" className="w-5 h-5" />
+                        : <WeatherIcon className={`h-4 w-4 ${weather.color}`} />}
+                    <span className={`text-[9px] ${weather.color}`}>
+                        {liveObs?.weather_description
+                            ? liveObs.weather_description.replace(/\b\w/g, c => c.toUpperCase())
+                            : weather.label}
+                    </span>
                 </div>
             </div>
 
-            {/* Temperature + Stats */}
+            {/* Live current temp (if available) + historical range */}
             <div className="flex items-end justify-between">
                 <div className="flex items-baseline gap-1">
-                    <span className={`text-xl font-black tracking-tighter leading-none ${tempColor(obs.temperature_max)}`}>
-                        {Math.round(obs.temperature_max)}°
-                    </span>
-                    <span className="text-[10px] text-muted-foreground leading-none">
-                        /{Math.round(obs.temperature_min)}°
-                    </span>
+                    {liveObs?.temperature != null ? (
+                        <>
+                            <span className={`text-xl font-black tracking-tighter leading-none ${tempColor(liveObs.temperature)}`}>
+                                {Math.round(liveObs.temperature)}°
+                            </span>
+                            <span className="text-[9px] text-muted-foreground leading-none">
+                                now · {Math.round(obs.temperature_max)}/{Math.round(obs.temperature_min)}°
+                            </span>
+                        </>
+                    ) : (
+                        <>
+                            <span className={`text-xl font-black tracking-tighter leading-none ${tempColor(obs.temperature_max)}`}>
+                                {Math.round(obs.temperature_max)}°
+                            </span>
+                            <span className="text-[10px] text-muted-foreground leading-none">
+                                /{Math.round(obs.temperature_min)}°
+                            </span>
+                        </>
+                    )}
                 </div>
                 <div className="flex items-center gap-2.5 text-[9px] text-muted-foreground">
                     <div className="flex items-center gap-0.5">
                         <Droplets className="h-2.5 w-2.5 text-blue-400" />
-                        <span>{Math.round(obs.humidity_mean)}%</span>
+                        <span>{liveObs?.humidity != null ? liveObs.humidity : Math.round(obs.humidity_mean)}%</span>
                     </div>
                     <div className="flex items-center gap-0.5">
                         <Wind className="h-2.5 w-2.5 text-emerald-400" />
-                        <span>{obs.wind_speed_max.toFixed(0)}kph</span>
+                        <span>
+                            {liveObs?.wind_speed != null
+                                ? `${(liveObs.wind_speed * 3.6).toFixed(0)}kph`
+                                : `${obs.wind_speed_max.toFixed(0)}kph`}
+                        </span>
                     </div>
-                    {obs.precipitation_sum > 0 && (
+                    {(liveObs?.rain_1h ?? obs.precipitation_sum) > 0 && (
                         <div className="flex items-center gap-0.5">
                             <CloudRain className="h-2.5 w-2.5 text-blue-400" />
-                            <span>{obs.precipitation_sum.toFixed(1)}mm</span>
+                            <span>{(liveObs?.rain_1h ?? obs.precipitation_sum).toFixed(1)}mm</span>
                         </div>
                     )}
                 </div>
             </div>
 
-            {/* Z-score indicators (compact) */}
-            {(obs.temp_max_zscore !== null || obs.precip_zscore !== null) && (
-                <div className="flex items-center gap-2 mt-0.5">
-                    {obs.temp_max_zscore !== null && (
-                        <ZScorePill label="T" zscore={obs.temp_max_zscore} type="temp" />
-                    )}
-                    {obs.precip_zscore !== null && (
-                        <ZScorePill label="P" zscore={obs.precip_zscore} type="precip" />
-                    )}
-                </div>
-            )}
+            {/* Live badge + Z-score indicators */}
+            <div className="flex items-center gap-2 mt-0.5">
+                {liveObs && (
+                    <span className="inline-flex items-center gap-0.5 rounded-full px-1.5 py-0 text-[8px] font-semibold bg-sky-500/15 text-sky-400 border border-sky-500/20">
+                        <Radio className="h-2 w-2" /> LIVE
+                    </span>
+                )}
+                {obs.temp_max_zscore !== null && (
+                    <ZScorePill label="T" zscore={obs.temp_max_zscore} type="temp" />
+                )}
+                {obs.precip_zscore !== null && (
+                    <ZScorePill label="P" zscore={obs.precip_zscore} type="precip" />
+                )}
+            </div>
         </button>
     )
 }

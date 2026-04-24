@@ -210,15 +210,47 @@
   em { font-style: italic; }
 }
 
-/* Animated dash flow for map arc lines */
-@keyframes dash-flow {
-  to {
-    stroke-dashoffset: -28;
-  }
+/* ── Map arc animations ─────────────────────────────────────────────────── */
+
+@keyframes dash-flow-fast {
+  to { stroke-dashoffset: -28; }
+}
+@keyframes dash-flow-slow {
+  to { stroke-dashoffset: -42; }
+}
+@keyframes arc-glow-pulse {
+  0%, 100% { opacity: 0.12; }
+  50%       { opacity: 0.22; }
 }
 
-.animated-arc {
-  animation: dash-flow 1.2s linear infinite;
+/* Fast animated dash — used for selected-node arcs */
+.arc-animated path {
+  animation: dash-flow-fast 0.9s linear infinite;
+}
+
+/* Slow animated dash — used for background / dim arcs */
+.arc-animated-slow path {
+  animation: dash-flow-slow 2.4s linear infinite;
+}
+
+/* Pulsing wide glow layer */
+.arc-glow path {
+  animation: arc-glow-pulse 2s ease-in-out infinite;
+}
+
+/* Country label floating text */
+.country-label {
+  background: none !important;
+  border: none !important;
+}
+.country-label-text {
+  font-size: 10px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.75);
+  text-shadow: 0 0 6px rgba(0,0,0,0.9), 0 0 12px rgba(0,0,0,0.6);
+  white-space: nowrap;
+  pointer-events: none;
+  letter-spacing: 0.03em;
 }
 
 .map-country-tooltip {

@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { ExternalLink, ArrowRight, ArrowLeft, X, Clock, ChevronRight, Loader2 } from "lucide-react"
 import type { GraphEdge } from "@/lib/api"
-import { fetchEntityTimeline, type TimelineEvent } from "@/lib/api"
+import { fetchEntityTimeline, fetchEntitySentiment, type TimelineEvent } from "@/lib/api"
 
 export interface SelectedNode {
     id: string | number
@@ -27,7 +27,7 @@ interface GraphInfoPanelProps {
     onClose?: () => void
 }
 
-type PanelTab = "info" | "timeline"
+type PanelTab = "info" | "timeline" | "sentiment"
 
 export function GraphInfoPanel({
     selectedNode,
@@ -40,24 +40,37 @@ export function GraphInfoPanel({
     const [timelineTotal, setTimelineTotal] = useState(0)
     const [timelineLoading, setTimelineLoading] = useState(false)
     const [timelineOffset, setTimelineOffset] = useState(0)
+    const [sentiment, setSentiment] = useState<{ average_sentiment: number, sample_size: number, dominant_sentiment: string } | null>(null)
+    const [sentimentLoading, setSentimentLoading] = useState(false)
     const PAGE = 20
 
     useEffect(() => {
         setPanelTab("info")
         setTimeline([])
         setTimelineOffset(0)
+        setSentiment(null)
     }, [selectedNode?.id])
 
     useEffect(() => {
-        if (panelTab !== "timeline" || !selectedNode || selectedNode.nodeLabel !== "Entity") return
-        setTimelineLoading(true)
-        fetchEntityTimeline(selectedNode.fullLabel, PAGE, timelineOffset)
-            .then((d) => {
-                setTimeline(d.timeline)
-                setTimelineTotal(d.total)
-            })
-            .catch(() => setTimeline([]))
-            .finally(() => setTimelineLoading(false))
+        if (!selectedNode || selectedNode.nodeLabel !== "Entity") return
+        
+        if (panelTab === "timeline") {
+            setTimelineLoading(true)
+            fetchEntityTimeline(selectedNode.fullLabel, PAGE, timelineOffset)
+                .then((d) => {
+                    setTimeline(d.timeline)
+                    setTimelineTotal(d.total)
+                })
+                .catch(() => setTimeline([]))
+                .finally(() => setTimelineLoading(false))
+        } else if (panelTab === "sentiment") {
+            if (sentiment) return
+            setSentimentLoading(true)
+            fetchEntitySentiment(selectedNode.fullLabel, 72)
+                .then(setSentiment)
+                .catch(() => setSentiment(null))
+                .finally(() => setSentimentLoading(false))
+        }
     }, [panelTab, selectedNode?.fullLabel, timelineOffset]) // eslint-disable-line react-hooks/exhaustive-deps
 
     if (!selectedNode) return null
@@ -76,7 +89,7 @@ export function GraphInfoPanel({
     const currentPage = Math.floor(timelineOffset / PAGE) + 1
 
     return (
-        <Card className="fixed top-[70px] left-4 z-[1000] w-[420px] max-h-[75vh] flex flex-col border-white/10 bg-black/95 backdrop-blur-xl overflow-hidden">
+        <Card className="fixed top-[70px] left-4 right-4 md:right-auto z-[1000] w-auto md:w-[420px] max-h-[60vh] md:max-h-[75vh] flex flex-col border-white/10 bg-black/95 backdrop-blur-xl overflow-hidden shadow-2xl">
             <CardHeader className="pb-2 shrink-0">
                 <div className="flex items-start justify-between">
                     <CardTitle className="text-sm text-sky-400 pr-2">
@@ -124,7 +137,7 @@ export function GraphInfoPanel({
                 {/* Tab switcher — only for entities */}
                 {isEntity && (
                     <div className="flex gap-0.5 mt-2 border-b border-white/5 pb-0">
-                        {(["info", "timeline"] as PanelTab[]).map((t) => (
+                        {(["info", "timeline", "sentiment"] as PanelTab[]).map((t) => (
                             <button
                                 key={t}
                                 onClick={() => setPanelTab(t)}
@@ -218,7 +231,7 @@ export function GraphInfoPanel({
                             </div>
                         )}
                     </>
-                ) : (
+                ) : panelTab === "timeline" ? (
                     /* Timeline tab */
                     <div className="space-y-0">
                         {timelineLoading ? (
@@ -257,6 +270,44 @@ export function GraphInfoPanel({
                                     </div>
                                 )}
                             </>
+                        )}
+                    </div>
+                ) : (
+                    /* Sentiment tab */
+                    <div className="space-y-4 p-2">
+                        {sentimentLoading ? (
+                            <div className="flex items-center justify-center py-8">
+                                <Loader2 className="h-4 w-4 animate-spin text-sky-400" />
+                                <span className="ml-2 text-xs text-muted-foreground">Analyzing sentiment…</span>
+                            </div>
+                        ) : !sentiment ? (
+                            <p className="py-6 text-center text-xs text-muted-foreground">Sentiment data unavailable</p>
+                        ) : (
+                            <div className="space-y-4">
+                                <div className="p-3 bg-white/[0.02] border border-white/5 rounded text-center">
+                                    <div className={`text-2xl font-light tracking-widest ${
+                                        sentiment.average_sentiment != null && !isNaN(sentiment.average_sentiment)
+                                            ? sentiment.average_sentiment > 0.3 ? 'text-emerald-400' :
+                                              sentiment.average_sentiment < -0.3 ? 'text-red-400' : 'text-yellow-400'
+                                            : 'text-muted-foreground'
+                                    }`}>
+                                        {sentiment.average_sentiment != null && !isNaN(sentiment.average_sentiment)
+                                            ? `${(sentiment.average_sentiment * 100).toFixed(0)}%`
+                                            : 'N/A'}
+                                    </div>
+                                    <div className="text-[10px] text-muted-foreground uppercase pt-1">Average Sentiment (72h)</div>
+                                </div>
+                                <div className="grid grid-cols-2 gap-2">
+                                    <div className="p-2 rounded bg-white/5 border border-white/5">
+                                        <div className="text-[9px] text-muted-foreground uppercase tracking-wide mb-1">Articles</div>
+                                        <div className="text-xs text-white/90 font-medium tabular-nums">{sentiment.sample_size ?? 0}</div>
+                                    </div>
+                                    <div className="p-2 rounded bg-white/5 border border-white/5">
+                                        <div className="text-[9px] text-muted-foreground uppercase tracking-wide mb-1">Dominant</div>
+                                        <div className="text-xs text-white/90 font-medium capitalize">{sentiment.dominant_sentiment || 'N/A'}</div>
+                                    </div>
+                                </div>
+                            </div>
                         )}
                     </div>
                 )}
